@@ -456,11 +456,11 @@ export default function App() {
         <button className={tab === 'hoy' ? 'active' : ''} onClick={() => setTab('hoy')}>
           Hoy
         </button>
-        <button className={tab === 'pasado' ? 'active' : ''} onClick={() => setTab('pasado')}>
-          Resultados
-        </button>
         <button className={tab === 'proximos' ? 'active' : ''} onClick={() => setTab('proximos')}>
           Próximos
+        </button>
+        <button className={tab === 'pasado' ? 'active' : ''} onClick={() => setTab('pasado')}>
+          Resultados
         </button>
         <button className={tab === 'clasificacion' ? 'active' : ''} onClick={() => setTab('clasificacion')}>
           Clasificación
