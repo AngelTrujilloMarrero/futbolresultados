@@ -572,4 +572,19 @@ body {
   .modal-grid {
     grid-template-columns: 1fr;
   }
+
+  .league-tabs,
+  .tabs {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .league-tabs button,
+  .tabs button {
+    flex: 1 1 auto;
+    min-width: 70px;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
 }
