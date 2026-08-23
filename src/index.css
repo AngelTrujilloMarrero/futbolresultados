@@ -760,6 +760,10 @@ body {
   pointer-events: none;
 }
 
+.xi-dots .xi-player-name {
+  font-weight: 700;
+}
+
 .modal-score {
   display: grid;
   grid-template-columns: 1fr auto 1fr;

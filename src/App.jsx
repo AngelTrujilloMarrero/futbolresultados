@@ -135,9 +135,25 @@ function xiPoints(home, away) {
   return pts
 }
 
+// Nombre corto para la camiseta: apellido; si se repite, inicial + apellido
+function xiShortName(name, dupes) {
+  const parts = (name || '?').trim().split(/\s+/)
+  const last = parts[parts.length - 1]
+  if (dupes?.has(last) && parts.length > 1) {
+    return `${parts[0][0].toUpperCase()}. ${last}`
+  }
+  return last
+}
+
 function XIDots({ home, away }) {
   const pts = xiPoints(home, away)
   if (!pts.length) return null
+  const counts = new Map()
+  pts.forEach((p) => {
+    const last = (p.name || '?').trim().split(/\s+/).pop()
+    counts.set(last, (counts.get(last) || 0) + 1)
+  })
+  const dupes = new Set([...counts.entries()].filter(([, n]) => n > 1).map(([k]) => k))
   return (
     <g className="xi-dots">
       {pts.map((p, i) => (
@@ -146,6 +162,9 @@ function XIDots({ home, away }) {
           <circle cx={p.cx} cy={p.cy} r={12} fill={p.side === 'home' ? 'var(--team-home)' : 'var(--team-away)'} stroke="#fff" strokeWidth={1.5} opacity={0.92} />
           <text className="pitch-label" x={p.cx} y={p.cy + 4} textAnchor="middle" fontSize={11}>
             {p.jersey}
+          </text>
+          <text className="pitch-label xi-player-name" x={p.cx} y={p.cy + 26} textAnchor="middle" fontSize={10.5}>
+            {xiShortName(p.name, dupes)}
           </text>
         </g>
       ))}
