@@ -3,6 +3,7 @@ const LEAGUES = {
   segunda: { source: 'espn', slug: 'esp.2', fotmobId: 140, name: 'LALIGA 2' },
   rfef1: { source: 'fotmob', fotmobId: 8968, name: 'Primera RFEF' },
   rfef2: { source: 'fotmob', fotmobId: 9138, name: 'Segunda RFEF' },
+  copa: { source: 'espn', slug: 'esp.copa_del_rey', name: 'Copa del Rey' },
 }
 
 const TIMEZONES = {
@@ -242,12 +243,25 @@ export async function fetchSeasonCalendar(league, tz) {
   return events.filter((m) => m.status !== 'post').sort((a, b) => a.date.localeCompare(b.date))
 }
 
+export async function fetchTenerifeCopa(tz) {
+  const cfg = LEAGUES.copa
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(-6)}-${dateKey(90)}&limit=200`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+  const data = await res.json()
+  return (data.events || [])
+    .filter((e) => e.competitions?.[0])
+    .map((e) => parseCompetition(e.competitions[0], tz))
+    .filter((m) => `${m.home.name} ${m.away.name}`.toLowerCase().includes('tenerife'))
+}
+
 export async function fetchTenerife(tz) {
   const days = [-3, -2, -1, 0, 1, 2, 3, 4]
   const segunda = await Promise.all(
     days.map((o) => fetchScoreboard('segunda', dateKey(o), tz).catch(() => ({ events: [] }))),
   )
   const rfef2 = await fetchRfefBoard(LEAGUES.rfef2.fotmobId, tz).catch(() => null)
+  const copa = await fetchTenerifeCopa(tz).catch(() => [])
 
   const hits = []
   const push = (m, league) => {
@@ -260,6 +274,7 @@ export async function fetchTenerife(tz) {
     rfef2.hoy.forEach((m) => push(m, '2ª RFEF'))
     rfef2.proximos.forEach((m) => push(m, '2ª RFEF'))
   }
+  copa.forEach((m) => push(m, 'Copa del Rey'))
   return hits.sort((a, b) => a.date.localeCompare(b.date))
 }
 
@@ -366,7 +381,9 @@ export async function fetchMatchEvents(league, eventId) {
   const events = []
   for (const ev of raw) {
     const rawType = ev.type?.type
-    const type = EVENT_TYPES[rawType] ?? (rawType === 'own-goal' ? 'goal' : null)
+    const type =
+      EVENT_TYPES[rawType] ??
+      (rawType === 'own-goal' || (rawType || '').startsWith('goal') ? 'goal' : null)
     if (!type) continue
     const teamName = ev.team?.displayName || ''
     const names = (ev.participants || []).map((p) => p?.athlete?.displayName || '')

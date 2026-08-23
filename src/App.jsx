@@ -312,6 +312,11 @@ const groupOrder = (g) => {
   return n ? Number(n[0]) : Infinity
 }
 
+const groupColorClass = (g) => {
+  const n = g && g.match(/\d+/)
+  return n ? `cal-group-${n[0]}` : ''
+}
+
 function CalendarView({ state }) {
   const { sections, loading, error } = state
   if (loading) return <p className="msg">Cargando calendario…</p>
@@ -332,7 +337,7 @@ function CalendarView({ state }) {
               {day.blocks.map((b, bi) =>
                 sec.groups > 1 && b.group ? (
                   <div key={bi} className="cal-block">
-                    <div className="cal-group-name">{b.group}</div>
+                    <div className={`cal-group-name ${groupColorClass(b.group)}`}>{b.group}</div>
                     {b.matches.map((m) => (
                       <MatchRow key={m.id} match={m} />
                     ))}
@@ -354,7 +359,7 @@ function CalendarView({ state }) {
 function MatchRow({ match: m, chip }) {
   return (
     <div className="cal-match">
-      {chip ? <span className="group-chip">{chip}</span> : null}
+      {chip ? <span className={`group-chip ${groupColorClass(chip)}`}>{chip}</span> : null}
       <img src={m.home.logo} alt="" loading="lazy" />
       <span className="cal-team home">{m.home.name}</span>
       <strong className="cal-time">{toTimeLabel(m.date)}</strong>
@@ -508,7 +513,19 @@ export default function App() {
       {tenerife.length > 0 ? (
         <section className="tenerife">
           <h3>⭐ CD Tenerife</h3>
-          <p className="tenerife-sub">Seguimiento especial · Segunda y 2ª RFEF</p>
+          <p className="tenerife-sub">Seguimiento especial · Segunda · 2ª RFEF · Copa del Rey</p>
+          <div className="tenerife-links">
+            <span>Designaciones TV Canaria:</span>
+            <a href="https://www.futbolenlatv.es/equipo/tenerife" target="_blank" rel="noreferrer">
+              Tenerife
+            </a>
+            <a href="https://www.futbolenlatv.es/equipo/las-palmas" target="_blank" rel="noreferrer">
+              Las Palmas
+            </a>
+            <a href="https://www.rtvc.es/" target="_blank" rel="noreferrer">
+              rtvc.es
+            </a>
+          </div>
           <div className="tenerife-list">
             {tenerife.map((m) => {
               const isFinal = m.status === 'post'
