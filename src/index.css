@@ -61,38 +61,102 @@ body {
   padding: 24px 16px;
 }
 
-.tz-select {
+.cal-toggle {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   margin: 0 0 14px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text);
 }
 
-.tz-select button {
+.cal-toggle button {
   cursor: pointer;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--text-h);
-  padding: 4px 12px;
+  padding: 5px 18px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   transition: all 0.2s;
 }
 
-.tz-select button:hover {
+.cal-toggle button:hover {
   border-color: var(--accent);
   color: var(--accent);
 }
 
-.tz-select button.active {
+.cal-toggle button.active {
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cal-day {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: var(--shadow);
+}
+
+.cal-day h4 {
+  margin: 0 0 4px;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--accent);
+}
+
+.cal-match {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.cal-match + .cal-match {
+  border-top: 1px solid var(--surface-2);
+}
+
+.cal-match img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cal-match .group-chip {
+  flex-shrink: 0;
+}
+
+.cal-team {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-h);
+}
+
+.cal-team.home {
+  text-align: right;
+}
+
+.cal-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
 }
 
 .league-tabs,

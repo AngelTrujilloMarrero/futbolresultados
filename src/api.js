@@ -21,6 +21,23 @@ function toLocal(dateStr, tz) {
   })
 }
 
+export function toDateLabel(dateStr, tz = TIMEZONES.canarias) {
+  return new Date(dateStr).toLocaleDateString('es-ES', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    timeZone: tz,
+  })
+}
+
+export function toTimeLabel(dateStr, tz = TIMEZONES.canarias) {
+  return new Date(dateStr).toLocaleTimeString('es-ES', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: tz,
+  })
+}
+
 function parseCompetition(comp, tz) {
   const [home, away] = comp.competitors
   const status = comp.status?.type?.state || 'pre'
@@ -157,6 +174,27 @@ export async function fetchScoreboard(league, dateStr, tz) {
     day: data.day?.date,
     events,
   }
+}
+
+export async function fetchSeasonCalendar(league, tz) {
+  const cfg = LEAGUES[league]
+  if (cfg.source === 'fotmob') {
+    const data = await fetchFotmobOverview(cfg.fotmobId, dateKey(0))
+    return data.matches
+      .filter((m) => !m.status?.finished)
+      .map((m) => parseFotmobMatch(m, tz))
+      .sort((a, b) => a.date.localeCompare(b.date))
+  }
+
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(300)}&limit=400`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+  const data = await res.json()
+  return (data.events || [])
+    .filter((e) => e.competitions?.[0])
+    .map((e) => parseCompetition(e.competitions[0], tz))
+    .filter((m) => m.status !== 'post')
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function fetchTenerife(tz) {

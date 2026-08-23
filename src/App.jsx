@@ -1,5 +1,17 @@
 import { useEffect, useState } from 'react'
-import { fetchScoreboard, fetchRfefBoard, fetchTenerife, fetchStandings, fetchMatchEvents, dateKey, LEAGUES, TIMEZONES } from './api'
+import {
+  fetchScoreboard,
+  fetchRfefBoard,
+  fetchTenerife,
+  fetchStandings,
+  fetchSeasonCalendar,
+  fetchMatchEvents,
+  dateKey,
+  toTimeLabel,
+  toDateLabel,
+  LEAGUES,
+  TIMEZONES,
+} from './api'
 import './App.css'
 
 function ScoreBlock({ team }) {
@@ -295,6 +307,32 @@ function Standings({ standings }) {
   )
 }
 
+function CalendarView({ state }) {
+  const { groups, loading, error } = state
+  if (loading) return <p className="msg">Cargando calendario…</p>
+  if (error) return <p className="msg error">{error}</p>
+  if (!groups.length) return <p className="msg">No quedan partidos programados esta temporada.</p>
+  return (
+    <div className="calendar">
+      {groups.map((g) => (
+        <section key={g.key} className="cal-day">
+          <h4>{g.label}</h4>
+          {g.matches.map((m) => (
+            <div key={m.id} className="cal-match">
+              {m.group ? <span className="group-chip">{m.group}</span> : null}
+              <img src={m.home.logo} alt="" loading="lazy" />
+              <span className="cal-team home">{m.home.name}</span>
+              <strong className="cal-time">{toTimeLabel(m.date)}</strong>
+              <span className="cal-team">{m.away.name}</span>
+              <img src={m.away.logo} alt="" loading="lazy" />
+            </div>
+          ))}
+        </section>
+      ))}
+    </div>
+  )
+}
+
 export default function App() {
   const [league, setLeague] = useState('primera')
   const [tab, setTab] = useState('hoy')
@@ -304,17 +342,18 @@ export default function App() {
     pasado: { events: [], loading: true, error: null },
     proximos: { events: [], loading: true, error: null },
   })
-  const [tz, setTz] = useState('canarias')
+  const [calOpen, setCalOpen] = useState(false)
+  const [calendar, setCalendar] = useState({ groups: [], loading: false, error: null })
   const [tenerife, setTenerife] = useState([])
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
 
   useEffect(() => {
     let cancelled = false
-    fetchTenerife(TIMEZONES[tz])
+    fetchTenerife(TIMEZONES.canarias)
       .then((hits) => !cancelled && setTenerife(hits))
       .catch(() => !cancelled && setTenerife([]))
     const interval = setInterval(() => {
-      fetchTenerife(TIMEZONES[tz])
+      fetchTenerife(TIMEZONES.canarias)
         .then((hits) => !cancelled && setTenerife(hits))
         .catch(() => !cancelled && setTenerife([]))
     }, 60000)
@@ -322,7 +361,7 @@ export default function App() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [tz])
+  }, [])
 
   useEffect(() => {
     const offsets = { hoy: [0], pasado: [-3, -2, -1], proximos: [1, 2, 3, 4] }
@@ -341,7 +380,7 @@ export default function App() {
           .then((st) => !cancelled && setStandings({ groups: st.groups, loading: false, error: null }))
           .catch(() => !cancelled && setStandings((prev) => ({ ...prev, loading: false, error: 'No se pudo cargar la clasificación.' })))
         if (isRfef) {
-          const board = await fetchRfefBoard(LEAGUES[league].fotmobId, TIMEZONES[tz])
+          const board = await fetchRfefBoard(LEAGUES[league].fotmobId, TIMEZONES.canarias)
           if (cancelled) return
           setLists({
             hoy: { events: board.hoy, loading: false, error: null },
@@ -354,7 +393,7 @@ export default function App() {
         const results = await Promise.all(
           Object.entries(offsets).map(async ([k, days]) => {
             const chunks = await Promise.all(
-              days.map((o) => fetchScoreboard(league, dateKey(o), TIMEZONES[tz]).catch(() => ({ events: [] }))),
+              days.map((o) => fetchScoreboard(league, dateKey(o), TIMEZONES.canarias).catch(() => ({ events: [] }))),
             )
             const events = chunks.flatMap((c) => c.events)
             return [k, { events, loading: false, error: null }]
@@ -379,9 +418,42 @@ export default function App() {
       cancelled = true
       clearInterval(interval)
     }
-  }, [league, tz])
+  }, [league])
+
+  useEffect(() => {
+    if (!calOpen) return undefined
+    let cancelled = false
+    fetchSeasonCalendar(league, TIMEZONES.canarias)
+      .then((events) => {
+        if (cancelled) return
+        const groups = []
+        const index = new Map()
+        for (const m of events) {
+          const key = m.date.slice(0, 10)
+          if (!index.has(key)) {
+            index.set(key, groups.length)
+            groups.push({ key, label: toDateLabel(m.date), matches: [] })
+          }
+          groups[index.get(key)].matches.push(m)
+        }
+        setCalendar({ groups, loading: false, error: null })
+      })
+      .catch(() => {
+        if (!cancelled) setCalendar({ groups: [], loading: false, error: 'No se pudo cargar el calendario.' })
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [calOpen, league])
 
   const list = lists[tab]
+  const shownEvents =
+    tab === 'pasado' ? [...list.events].sort((a, b) => b.date.localeCompare(a.date)) : list.events
+
+  const selectLeague = (l) => {
+    setLeague(l)
+    if (calOpen) setCalendar({ groups: [], loading: true, error: null })
+  }
 
   return (
     <div className="app">
@@ -409,76 +481,98 @@ export default function App() {
         </section>
       ) : null}
 
-      <div className="tz-select">
-        <span>Hora:</span>
+      <div className="cal-toggle">
         <button
-          className={tz === 'canarias' ? 'active' : ''}
-          onClick={() => setTz('canarias')}
+          className={calOpen ? 'active' : ''}
+          onClick={() => {
+            if (!calOpen) setCalendar({ groups: [], loading: true, error: null })
+            setCalOpen((v) => !v)
+          }}
         >
-          Canarias
-        </button>
-        <button
-          className={tz === 'peninsular' ? 'active' : ''}
-          onClick={() => setTz('peninsular')}
-        >
-          Península
+          Calendario
         </button>
       </div>
 
       <nav className="league-tabs">
         <button
           className={league === 'primera' ? 'active' : ''}
-          onClick={() => setLeague('primera')}
+          onClick={() => selectLeague('primera')}
         >
           Primera
         </button>
         <button
           className={league === 'segunda' ? 'active' : ''}
-          onClick={() => setLeague('segunda')}
+          onClick={() => selectLeague('segunda')}
         >
           Segunda
         </button>
         <button
           className={league === 'rfef1' ? 'active' : ''}
-          onClick={() => setLeague('rfef1')}
+          onClick={() => selectLeague('rfef1')}
         >
           1ª RFEF
         </button>
         <button
           className={league === 'rfef2' ? 'active' : ''}
-          onClick={() => setLeague('rfef2')}
+          onClick={() => selectLeague('rfef2')}
         >
           2ª RFEF
         </button>
       </nav>
 
       <nav className="tabs">
-        <button className={tab === 'hoy' ? 'active' : ''} onClick={() => setTab('hoy')}>
+        <button
+          className={!calOpen && tab === 'hoy' ? 'active' : ''}
+          onClick={() => {
+            setCalOpen(false)
+            setTab('hoy')
+          }}
+        >
           Hoy
         </button>
-        <button className={tab === 'proximos' ? 'active' : ''} onClick={() => setTab('proximos')}>
+        <button
+          className={!calOpen && tab === 'proximos' ? 'active' : ''}
+          onClick={() => {
+            setCalOpen(false)
+            setTab('proximos')
+          }}
+        >
           Próximos
         </button>
-        <button className={tab === 'pasado' ? 'active' : ''} onClick={() => setTab('pasado')}>
+        <button
+          className={!calOpen && tab === 'pasado' ? 'active' : ''}
+          onClick={() => {
+            setCalOpen(false)
+            setTab('pasado')
+          }}
+        >
           Resultados
         </button>
-        <button className={tab === 'clasificacion' ? 'active' : ''} onClick={() => setTab('clasificacion')}>
+        <button
+          className={!calOpen && tab === 'clasificacion' ? 'active' : ''}
+          onClick={() => {
+            setCalOpen(false)
+            setTab('clasificacion')
+          }}
+        >
           Clasificación
         </button>
       </nav>
 
       <main className="content">
-        {tab === 'clasificacion' ? (
+        {calOpen ? (
+          <CalendarView state={calendar} />
+        ) : tab === 'clasificacion' ? (
           <Standings standings={standings} />
         ) : (
           <>
             {list.loading ? <p className="msg">Cargando…</p> : null}
             {list.error ? <p className="msg error">{list.error}</p> : null}
-            {!list.loading && !list.error && list.events.length === 0 ? (
+            {!list.loading && !list.error && shownEvents.length === 0 ? (
               <p className="msg">Sin partidos en este rango de fechas.</p>
             ) : null}
             <div className="matches">
-              {list.events.map((m) => {
+              {shownEvents.map((m) => {
                 const expanded = expandedId === m.id
                 return (
                   <div key={m.id} className="match-item">
