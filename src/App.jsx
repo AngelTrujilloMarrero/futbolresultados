@@ -510,7 +510,8 @@ function TenerifeLineup({ match }) {
     setError(null)
     try {
       const key = leagueKeyFromLabel(match.league)
-      const data = await fetchLineup(key, match.id)
+      // fecha + equipos: activan la guardia anti-mejera y la resolución cruzada FotMob
+      const data = await fetchLineup(key, match.id, match.date, match.home.name, match.away.name)
       setLineup(data)
       if (!data.available) {
         const r = data.reason || ''
@@ -533,16 +534,18 @@ function TenerifeLineup({ match }) {
   }
 
   // Background polling: 10' antes ya hay XI en fuentes oficiales →
-  // si faltan <90' para el inicio, intentar cargar en segundo plano cada 30s
-  // y auto-abrir cuando se detecte
+  // si faltan <90' para el inicio (o el partido está en vivo), intentar cargar
+  // en segundo plano cada 30s y auto-abrir cuando se detecte.
+  // La ventana de recuperación no se cierra al poco del saque: se mantiene
+  // hasta 4h después para que un intento fallido previo se recupere solo.
   useEffect(() => {
     if (lineup?.available) return
     if (match.status === 'post') return
     const checkWindow = () => {
       const diffMs = new Date(match.date).getTime() - Date.now()
       const diffMin = diffMs / 60000
-      // ventana: desde 90' antes hasta 30' después del inicio
-      return diffMin < 90 && diffMin > -30
+      if (match.status === 'in') return true
+      return diffMin < 90 && diffMin > -240
     }
     if (!checkWindow()) return
     // carga inicial en segundo plano si aún no hay datos
@@ -555,12 +558,12 @@ function TenerifeLineup({ match }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match.date, match.status, lineup?.available])
 
-  // auto-abrir cuando el XI aparece y faltan <60' para el inicio
+  // auto-abrir cuando el XI aparece (pre-vista o ya en juego)
   useEffect(() => {
     if (!lineup?.available || open) return
     const diffMin = (new Date(match.date).getTime() - Date.now()) / 60000
-    if (diffMin < 60 && diffMin > -30) setOpen(true)
-  }, [lineup?.available, match.date, open])
+    if ((diffMin < 60 && diffMin > -30) || match.status === 'in') setOpen(true)
+  }, [lineup?.available, match.date, match.status, open])
 
   // auto-refresh si panel abierto y aún no hay XI
   useEffect(() => {
