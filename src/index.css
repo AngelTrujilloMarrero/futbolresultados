@@ -866,3 +866,265 @@ body {
     white-space: nowrap;
   }
 }
+
+.tenerife-item-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.tenerife-xi {
+  margin-top: 4px;
+}
+
+.xi-toggle {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.xi-toggle.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+
+.xi-toggle.xi-ready {
+  background: #16a34a;
+  border-color: #16a34a;
+  color: #fff;
+  animation: xi-pulse 1.5s infinite;
+}
+
+@keyframes xi-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(22,163,74,0.5); }
+  50% { box-shadow: 0 0 0 6px rgba(22,163,74,0); }
+}
+
+.xi-hint {
+  font-weight: 400;
+  opacity: 0.8;
+  font-size: 10px;
+}
+
+.xi-hint-ready {
+  font-weight: 800;
+  opacity: 1;
+  color: #dcfce7;
+}
+
+.xi-panel {
+  margin-top: 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: var(--shadow);
+}
+
+.xi-msg {
+  margin: 4px 0;
+  font-size: 13px;
+  color: var(--text);
+  text-align: center;
+}
+
+.xi-sub {
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.9;
+}
+
+.xi-sub a {
+  color: var(--accent);
+}
+
+.xi-retry {
+  cursor: pointer;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  margin-left: 4px;
+}
+
+.xi-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 6px;
+}
+
+.xi-team {
+  font-weight: 800;
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.xi-formation {
+  background: var(--accent);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.xi-source {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text);
+}
+
+.xi-source a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.xi-verified {
+  background: #16a34a;
+  color: #fff;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+
+.xi-context {
+  font-size: 11px;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  margin-bottom: 8px;
+}
+
+.xi-board {
+  margin-bottom: 10px;
+}
+
+.xi-board svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 8px;
+}
+
+.xi-board-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 5px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.legend-xi {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.legend-xi-home {
+  color: var(--team-home);
+}
+
+.legend-xi-away {
+  color: var(--team-away);
+}
+
+.xi-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+
+.xi-list li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-h);
+  background: var(--surface-2);
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.xi-num {
+  background: var(--text-h);
+  color: var(--bg);
+  font-weight: 800;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.xi-pos {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent);
+  min-width: 28px;
+}
+
+.xi-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xi-bench {
+  margin-top: 10px;
+  font-size: 13px;
+}
+
+.xi-bench summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--text-h);
+  font-size: 12px;
+}
+
+.xi-bench ul,
+.xi-bench ol {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.xi-bench ul li {
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+@media (max-width: 520px) {
+  .xi-list {
+    grid-template-columns: 1fr;
+  }
+}

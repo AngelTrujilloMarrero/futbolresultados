@@ -8,6 +8,8 @@ import {
   fetchDesignacionesTV,
   fetchPrimeraRfefTv,
   fetchMatchEvents,
+  fetchLineup,
+  leagueKeyFromLabel,
   normTokens,
   dateKey,
   toTimeLabel,
@@ -120,6 +122,37 @@ function EventList({ title, items, empty }) {
 const PITCH_W = 600
 const PITCH_H = 400
 
+// Convierte coords normalizadas del XI a puntos del campo 600x400 (local ataca →, visitante ←)
+function xiPoints(home, away) {
+  const pts = []
+  const safe = (n) => Math.min(0.96, Math.max(0.04, Number(n) || 0.5))
+  home?.starters?.forEach((p) =>
+    pts.push({ ...p, cx: 16 + safe(p.y) * 276, cy: 22 + safe(p.x) * 356, side: 'home' }),
+  )
+  away?.starters?.forEach((p) =>
+    pts.push({ ...p, cx: PITCH_W - 16 - safe(p.y) * 276, cy: 22 + safe(p.x) * 356, side: 'away' }),
+  )
+  return pts
+}
+
+function XIDots({ home, away }) {
+  const pts = xiPoints(home, away)
+  if (!pts.length) return null
+  return (
+    <g className="xi-dots">
+      {pts.map((p, i) => (
+        <g key={`xi-${i}`}>
+          <title>{`#${p.jersey} ${p.name}`}</title>
+          <circle cx={p.cx} cy={p.cy} r={12} fill={p.side === 'home' ? 'var(--team-home)' : 'var(--team-away)'} stroke="#fff" strokeWidth={1.5} opacity={0.92} />
+          <text className="pitch-label" x={p.cx} y={p.cy + 4} textAnchor="middle" fontSize={11}>
+            {p.jersey}
+          </text>
+        </g>
+      ))}
+    </g>
+  )
+}
+
 function markerPos(type, side, index) {
   const spread = (i, n, start) => start + ((i % n) * 37) % 260
   if (type === 'goal') {
@@ -134,7 +167,7 @@ function markerPos(type, side, index) {
   return { x, y: 80 + spread(index, 5, 0) }
 }
 
-function Pitch({ home, away }) {
+function Pitch({ home, away, xi }) {
   const markers = []
   const push = (items, type, side) =>
     items.forEach((it, i) => {
@@ -176,6 +209,7 @@ function Pitch({ home, away }) {
           {rect(4, 110, 16, 180)}
           {rect(PITCH_W - 20, 110, 16, 180)}
         </g>
+        {xi?.available ? <XIDots home={xi.home} away={xi.away} /> : null}
         {markers.map((m, i) => (
           <g key={i} className="pitch-marker">
             <title>{`${m.minute}' ${m.player}`}</title>
@@ -225,6 +259,12 @@ function Pitch({ home, away }) {
         <span><span style={{ color: '#ef4444' }}>▮</span> Roja</span>
         <span><span style={{ color: 'var(--team-home)' }}>▲</span> Cambio local</span>
         <span><span style={{ color: 'var(--team-away)' }}>▼</span> Cambio visitante</span>
+        {xi?.available ? (
+          <>
+            <span><span className="legend-xi legend-xi-home">●</span> XI local</span>
+            <span><span className="legend-xi legend-xi-away">●</span> XI visitante</span>
+          </>
+        ) : null}
       </div>
     </div>
   )
@@ -234,6 +274,7 @@ function MatchDetail({ match, league }) {
   const [data, setData] = useState(null)
   const [error, setError] = useState(null)
   const [lastUpdate, setLastUpdate] = useState(null)
+  const [xi, setXi] = useState(null)
   const isLive = match.status === 'in'
 
   useEffect(() => {
@@ -249,6 +290,21 @@ function MatchDetail({ match, league }) {
         .catch(() => active && setError('No se pudieron cargar los eventos.'))
 
     load()
+    // XI inicial sobre el mapa (una sola carga; se reintenta si aún no está publicado)
+    const loadXi = () =>
+      fetchLineup(league, match.id, match.date, match.home.name, match.away.name)
+        .then((d) => {
+          if (active && d?.available) setXi(d)
+          return d
+        })
+        .catch(() => null)
+    loadXi().then((d) => {
+      if (!active || d?.available) return
+      const t = setInterval(() => {
+        if (!active) return clearInterval(t)
+        loadXi().then((r) => r?.available && clearInterval(t))
+      }, 60000)
+    })
     if (isLive) {
       const interval = setInterval(load, 20000)
       return () => {
@@ -259,6 +315,7 @@ function MatchDetail({ match, league }) {
     return () => {
       active = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [league, match.id, isLive])
 
   return (
@@ -281,7 +338,7 @@ function MatchDetail({ match, league }) {
       {!data && !error ? <p className="msg">Cargando eventos…</p> : null}
       {data ? (
         <>
-          <Pitch home={data.home} away={data.away} />
+          <Pitch home={data.home} away={data.away} xi={xi} />
           <div className="modal-grid">
             <div>
               <EventList title="Goles" items={data.home.goals} empty="Sin goles" />
@@ -418,6 +475,234 @@ function MatchRow({ match: m, chip, tvc, mov }) {
       <img src={m.away.logo} alt="" loading="lazy" />
       {tvc ? <TvcBadge /> : null}
       {mov ? <MovistarBadge /> : null}
+    </div>
+  )
+}
+
+function TenerifeLineup({ match }) {
+  const [open, setOpen] = useState(false)
+  const [lineup, setLineup] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const isTenerifeHome = (match.home.name || '').toLowerCase().includes('tenerife')
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const key = leagueKeyFromLabel(match.league)
+      const data = await fetchLineup(key, match.id)
+      setLineup(data)
+      if (!data.available) {
+        const r = data.reason || ''
+        if (r === 'no-slug' || r === 'no-lineup') setError('XI aún no publicado (se publica ~60 min antes)')
+        else if (r === 'no-roster' || r === 'no-starters') setError('XI aún no disponible en la fuente')
+        else if (r === 'network' || r.startsWith('http')) setError('Fuente temporalmente no disponible')
+        else setError('XI aún no disponible')
+      }
+    } catch {
+      setError('No se pudo cargar el XI')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && !lineup && !loading) load()
+  }
+
+  // Background polling: 10' antes ya hay XI en fuentes oficiales →
+  // si faltan <90' para el inicio, intentar cargar en segundo plano cada 30s
+  // y auto-abrir cuando se detecte
+  useEffect(() => {
+    if (lineup?.available) return
+    if (match.status === 'post') return
+    const checkWindow = () => {
+      const diffMs = new Date(match.date).getTime() - Date.now()
+      const diffMin = diffMs / 60000
+      // ventana: desde 90' antes hasta 30' después del inicio
+      return diffMin < 90 && diffMin > -30
+    }
+    if (!checkWindow()) return
+    // carga inicial en segundo plano si aún no hay datos
+    if (!lineup && !loading) load()
+    const id = setInterval(() => {
+      if (!checkWindow()) return
+      load()
+    }, 30000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.date, match.status, lineup?.available])
+
+  // auto-abrir cuando el XI aparece y faltan <60' para el inicio
+  useEffect(() => {
+    if (!lineup?.available || open) return
+    const diffMin = (new Date(match.date).getTime() - Date.now()) / 60000
+    if (diffMin < 60 && diffMin > -30) setOpen(true)
+  }, [lineup?.available, match.date, open])
+
+  // auto-refresh si panel abierto y aún no hay XI
+  useEffect(() => {
+    if (!open) return
+    if (lineup?.available) return
+    if (match.status === 'post') return
+    const ms = Date.now()
+    const matchMs = new Date(match.date).getTime()
+    const diffHours = (matchMs - ms) / 3600000
+    if (diffHours > 36 || diffHours < -4) return
+    const id = setInterval(load, 30000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lineup, match.date, match.status])
+
+  // identify Tenerife side
+  const tenSide = lineup?.available
+    ? lineup.home?.name?.toLowerCase().includes('tenerife')
+      ? lineup.home
+      : lineup.away?.name?.toLowerCase().includes('tenerife')
+        ? lineup.away
+        : isTenerifeHome
+          ? lineup.home
+          : lineup.away
+    : null
+  const rivalSide = lineup?.available
+    ? tenSide === lineup.home
+      ? lineup.away
+      : lineup.home
+    : null
+
+  const xiReady = Boolean(lineup?.available)
+  return (
+    <div className="tenerife-xi">
+      <button className={`xi-toggle ${open ? 'active' : ''} ${xiReady && !open ? 'xi-ready' : ''}`} onClick={handleToggle}>
+        {open ? '▲ Ocultar XI' : xiReady ? '✓ Ver XI inicial' : '▼ Ver XI inicial'}
+        {!open && !xiReady && match.status === 'pre' ? <span className="xi-hint">· se publica ~60' antes</span> : null}
+        {!open && xiReady ? <span className="xi-hint xi-hint-ready">· ¡disponible!</span> : null}
+      </button>
+      {open ? (
+        <div className="xi-panel">
+          {loading ? <p className="xi-msg">Cargando XI inicial…</p> : null}
+          {error && !loading ? (
+            <div className="xi-msg">
+              <p>{error}.</p>
+              <span className="xi-sub">
+                El XI oficial se publica unos 60 min antes en{' '}
+                <a href="https://www.clubdeportivotenerife.es/noticias" target="_blank" rel="noreferrer">clubdeportivotenerife.es</a>{' '}
+                y <a href="https://x.com/CDTOficial" target="_blank" rel="noreferrer">X @CDTOficial</a>.{' '}
+                {(() => {
+                  const k = leagueKeyFromLabel(match.league)
+                  if (k === 'segunda' || k === 'copa' || k === 'primera') {
+                    return (
+                      <>
+                        Ver también en{' '}
+                        <a href={`https://www.espn.com/soccer/match/_/gameId/${match.id}`} target="_blank" rel="noreferrer">ESPN Match Center</a>{' '}
+                      </>
+                    )
+                  }
+                  if (k === 'rfef1' || k === 'rfef2') {
+                    return (
+                      <>
+                        Ver también en{' '}
+                        <a href="https://www.fotmob.com/teams/9867/overview/tenerife" target="_blank" rel="noreferrer">FotMob Tenerife</a>{' '}
+                      </>
+                    )
+                  }
+                  return null
+                })()}
+                · <button className="xi-retry" onClick={load}>Reintentar</button>
+              </span>
+              {lineup?.reason === 'network' ? (
+                <p className="xi-sub" style={{ marginTop: 6 }}>
+                  La fuente directa puede estar bloqueada por CORS en producción. En desarrollo (`npm run dev`) el proxy `/fotmob` evita el bloqueo.
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+          {lineup?.available && tenSide ? (
+            <>
+              <div className="xi-header">
+                <span className="xi-team">XI CD Tenerife</span>
+                {tenSide.formation ? <span className="xi-formation">{tenSide.formation}</span> : null}
+                {lineup.verified ? <span className="xi-verified" title={`Coincide en ${lineup.sourcesCount} fuentes`}>✓ verificado</span> : null}
+                <span className="xi-source">Fuente: <a href={lineup.sourceUrl} target="_blank" rel="noreferrer">{lineup.source}</a> · oficial <a href="https://www.clubdeportivotenerife.es" target="_blank" rel="noreferrer">CDT</a></span>
+              </div>
+              <div className="xi-context">
+                {match.home.name} vs {match.away.name} · {new Date(match.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })} · {toTimeLabel(match.date)}
+              </div>
+              <div className="xi-board">
+                <svg viewBox={`0 0 ${PITCH_W} ${PITCH_H}`} role="img" aria-label="XI en el campo">
+                  <rect width={PITCH_W} height={PITCH_H} fill="var(--pitch-green)" />
+                  <g stroke="var(--pitch-line)" strokeWidth={2} fill="none">
+                    <rect x={2} y={2} width={PITCH_W - 4} height={PITCH_H - 4} rx={4} />
+                    <line x1={PITCH_W / 2} y1={0} x2={PITCH_W / 2} y2={PITCH_H} />
+                    <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={45} />
+                  </g>
+                  <XIDots home={lineup.home} away={lineup.away} />
+                </svg>
+                <div className="xi-board-labels">
+                  <span style={{ color: 'var(--team-home)' }}>■ {lineup.home?.name}</span>
+                  <span style={{ color: 'var(--team-away)' }}>■ {lineup.away?.name}</span>
+                </div>
+              </div>
+              <ol className="xi-list">
+                {tenSide.starters.map((p, i) => (
+                  <li key={i}>
+                    <span className="xi-num">{p.jersey}</span>
+                    <span className="xi-pos">{p.position || 'XI'}</span>
+                    <span className="xi-name">{p.name}</span>
+                  </li>
+                ))}
+              </ol>
+              {tenSide.bench?.length ? (
+                <details className="xi-bench">
+                  <summary>Suplentes ({tenSide.bench.length})</summary>
+                  <ul>
+                    {tenSide.bench.map((p, i) => (
+                      <li key={i}><span className="xi-num">{p.jersey}</span> {p.name}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {rivalSide?.starters?.length ? (
+                <details className="xi-bench">
+                  <summary>XI rival: {rivalSide.name} {rivalSide.formation ? `(${rivalSide.formation})` : ''}</summary>
+                  <ol className="xi-list">
+                    {rivalSide.starters.map((p, i) => (
+                      <li key={i}><span className="xi-num">{p.jersey}</span> {p.name}</li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function TenerifeCard({ m, tvc }) {
+  const isFinal = m.status === 'post'
+  const isLive = m.status === 'in'
+  const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
+  const onTvc = tvc
+  return (
+    <div className="tenerife-item-wrap">
+      <div className="tenerife-item">
+        <span className="tenerife-league">{m.league}</span>
+        <span className="tenerife-teams">
+          {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
+        </span>
+        {badgeable ? (
+          <span className={`tvc-chip ${onTvc ? 'tvc-si' : 'tvc-no'}`} title={onTvc ? 'Designado en TV Canaria' : 'Sin designación de TV Canaria'}>
+            {onTvc ? 'Con TV Canaria' : 'Sin TV Canaria'}
+          </span>
+        ) : null}
+        <span className="tenerife-date">{isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}</span>
+      </div>
+      <TenerifeLineup match={m} />
     </div>
   )
 }
@@ -580,33 +865,11 @@ export default function App() {
       {tenerife.length > 0 ? (
         <section className="tenerife">
           <h3>⭐ CD Tenerife</h3>
-          <p className="tenerife-sub">Seguimiento especial · Segunda · 2ª RFEF · Copa del Rey</p>
+          <p className="tenerife-sub">Seguimiento especial · Segunda · 2ª RFEF · Copa del Rey · XI inicial ~60' antes</p>
           <div className="tenerife-list">
-            {tenerife.map((m) => {
-              const isFinal = m.status === 'post'
-              const isLive = m.status === 'in'
-              const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
-              const onTvc = isTvcMatch(designaciones, m)
-              return (
-                <div key={`${m.league}-${m.id}`} className="tenerife-item">
-                  <span className="tenerife-league">{m.league}</span>
-                  <span className="tenerife-teams">
-                    {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
-                  </span>
-                  {badgeable ? (
-                    <span
-                      className={`tvc-chip ${onTvc ? 'tvc-si' : 'tvc-no'}`}
-                      title={onTvc ? 'Designado en TV Canaria' : 'Sin designación de TV Canaria'}
-                    >
-                      {onTvc ? 'Con TV Canaria' : 'Sin TV Canaria'}
-                    </span>
-                  ) : null}
-                  <span className="tenerife-date">
-                    {isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}
-                  </span>
-                </div>
-              )
-            })}
+            {tenerife.map((m) => (
+              <TenerifeCard key={`${m.league}-${m.id}`} m={m} tvc={isTvcMatch(designaciones, m)} />
+            ))}
           </div>
         </section>
       ) : null}

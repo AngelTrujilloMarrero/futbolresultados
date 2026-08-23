@@ -66,6 +66,32 @@ function parseCompetition(comp, tz) {
 }
 
 const fotmobCache = new Map()
+const fotmobSlugIndex = new Map()
+
+function indexFotmobSlugs(matches) {
+  for (const m of matches || []) {
+    if (m?.id && m?.pageUrl) {
+      fotmobSlugIndex.set(String(m.id), m.pageUrl.replace(/^\/matches\//, '').replace(/#.*/, ''))
+    }
+  }
+}
+
+async function resolveFotmobSlug(fotmobId, eventId, dateStr) {
+  const id = String(eventId)
+  if (fotmobSlugIndex.has(id)) return fotmobSlugIndex.get(id)
+  const season = fotmobSeason((dateStr || dateKey(0)).replaceAll('-', ''))
+  try {
+    const fixPage = await fetchFotmobPage(fotmobId, season, 'fixtures')
+    indexFotmobSlugs(fixPage.props?.pageProps?.fixtures?.allMatches)
+  } catch {}
+  if (!fotmobSlugIndex.has(id)) {
+    try {
+      const ovPage = await fetchFotmobPage(fotmobId, season, 'overview')
+      indexFotmobSlugs(ovPage.props?.pageProps?.overview?.leagueOverviewMatches)
+    } catch {}
+  }
+  return fotmobSlugIndex.get(id) || null
+}
 
 function fotmobSeason(dateStr) {
   const y = Number(dateStr.slice(0, 4))
@@ -73,8 +99,23 @@ function fotmobSeason(dateStr) {
   return m >= 8 ? `${y}/${y + 1}` : `${y - 1}/${y}`
 }
 
+function isDev() {
+  try {
+    return Boolean(import.meta?.env?.DEV)
+  } catch {
+    return false
+  }
+}
+
+function fotmobUrl(path) {
+  // path must start with /
+  if (isDev()) return `/fotmob${path}`
+  return `https://www.fotmob.com${path}`
+}
+
 async function fetchFotmobPage(fotmobId, season, kind) {
-  const url = `https://www.fotmob.com/leagues/${fotmobId}/${kind}?season=${encodeURIComponent(season)}`
+  const path = `/leagues/${fotmobId}/${kind}?season=${encodeURIComponent(season)}`
+  const url = fotmobUrl(path)
   const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0' } })
   if (!res.ok) throw new Error(`FotMob error ${res.status}`)
   const html = await res.text()
@@ -91,11 +132,13 @@ async function fetchFotmobOverview(fotmobId, dateStr) {
   const page = await fetchFotmobPage(fotmobId, season, 'overview')
   const overview = page.props?.pageProps?.overview || {}
   const matches = overview.leagueOverviewMatches || []
+  indexFotmobSlugs(matches)
 
   const groupById = {}
   const roundById = {}
   try {
     const fixPage = await fetchFotmobPage(fotmobId, season, 'fixtures')
+    indexFotmobSlugs(fixPage.props?.pageProps?.fixtures?.allMatches)
     for (const m of fixPage.props?.pageProps?.fixtures?.allMatches || []) {
       if (m.group != null) groupById[String(m.id)] = String(m.group)
       const r = m.roundName ?? m.round
@@ -533,7 +576,7 @@ export async function fetchMatchEvents(league, eventId) {
 async function fetchFotmobEvents(fotmobId, eventId) {
   const slug = await fotmobMatchSlug(eventId)
   if (!slug) return { home: { goals: [], cards: [], subs: [] }, away: { goals: [], cards: [], subs: [] } }
-  const res = await fetch(`https://www.fotmob.com/matches/${slug}`, {
+  const res = await fetch(fotmobUrl(`/matches/${slug}`), {
     headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0' },
   })
   if (!res.ok) throw new Error(`FotMob error ${res.status}`)
@@ -606,6 +649,308 @@ async function fotmobMatchSlug(eventId) {
     if (found) return found.pageUrl?.replace(/^\/matches\//, '').replace(/#.*/, '')
   }
   return null
+}
+
+function posShort(pos) {
+  if (!pos) return '?'
+  const p = pos.trim()
+  const low = p.toLowerCase()
+  if (low === 'g' || low.includes('goal') || low.includes('keeper')) return 'POR'
+  if (p.length <= 5 && /^[A-Z-]+$/i.test(p)) return p.toUpperCase()
+  if (low.includes('def') || low.includes('back')) return 'DEF'
+  if (low.includes('mid')) return 'MED'
+  if (low.includes('att') || low.includes('forw') || low.includes('wing') || low.includes('striker')) return 'DEL'
+  if (low.includes('sub')) return 'SUP'
+  return p.slice(0, 3).toUpperCase()
+}
+
+// Coordenadas normalizadas {x,y}: x=ancho (0 izq → 1 der), y=0 portería propia → 1 portería rival
+// ESPN no da coordenadas: se deducen del lado (Left/Right/Center) y banda (DEF/MED/DEL) de posFull
+function sideX(side, slot, total) {
+  const base = side === 'left' ? 0.16 : side === 'right' ? 0.84 : 0.5
+  if (total <= 1) return base
+  const spread = side === 'center' ? 0.36 : 0.24
+  return Math.min(0.92, Math.max(0.08, base - spread / 2 + (slot * spread) / (total - 1)))
+}
+
+function coordsFromFormation(starters) {
+  const gk = starters.find((p) => /goal/i.test(p.posFull || '') || p.position === 'POR')
+  const rest = starters.filter((p) => p !== gk)
+  const out = []
+  if (gk) out.push({ ...gk, x: 0.5, y: 0.05 })
+  const bandOf = (p) => {
+    const s = (p.posFull || '').toLowerCase()
+    if (/back|defender/.test(s)) return 'def'
+    if (/midfielder/.test(s)) return 'mid'
+    return 'att'
+  }
+  const xSideOf = (p) => {
+    const s = (p.posFull || '').toLowerCase()
+    if (/left/.test(s)) return 'left'
+    if (/right/.test(s)) return 'right'
+    return 'center'
+  }
+  const groups = { def: [], mid: [], att: [] }
+  for (const p of rest) groups[bandOf(p)].push(p)
+  const yBand = { def: 0.26, mid: 0.54, att: 0.84 }
+  for (const bandName of ['def', 'mid', 'att']) {
+    const list = groups[bandName]
+    // agrupa por lado manteniendo orden
+    const bySide = { left: [], center: [], right: [] }
+    list.forEach((p) => bySide[xSideOf(p)].push(p))
+    let flat = []
+    const maxLen = Math.max(bySide.left.length, bySide.center.length, bySide.right.length)
+    for (let i = 0; i < maxLen; i++) {
+      if (bySide.left[i]) flat.push({ p: bySide.left[i], side: 'left' })
+      if (bySide.center[i]) flat.push({ p: bySide.center[i], side: 'center' })
+      if (bySide.right[i]) flat.push({ p: bySide.right[i], side: 'right' })
+    }
+    const centers = flat.filter((f) => f.side === 'center').length
+    let cSlot = 0
+    flat.forEach(({ p, side }) => {
+      let total = bySide[side].length
+      let slot = side === 'center' ? cSlot++ : bySide[side].indexOf(p)
+      let x = sideX(side, slot, total)
+      if (side === 'center' && centers > 1) x = 0.34 + (cSlot - 1) * (0.32 / Math.max(1, centers - 1)) * 0.999
+      out.push({ ...p, x, y: yBand[bandName] + ((slot % 2) * 0.03) })
+    })
+  }
+  return out.slice(0, 11)
+}
+
+function coordsFromLayout(starters) {
+  return starters.map((p) => {
+    const v = p.layout?.vertical
+    if (v && typeof v.y === 'number') {
+      // FotMob: vertical.y=0 Portería propia arriba → nuestra y=0 es propia abajo (sin invertir)
+      return { ...p, x: Math.min(0.94, Math.max(0.06, v.x ?? 0.5)), y: Math.min(0.96, Math.max(0.04, v.y)) }
+    }
+    return p
+  })
+}
+
+export async function fetchEspnLineup(leagueKey, eventId, expectedDate) {
+  try {
+    const cfg = LEAGUES[leagueKey]
+    if (!cfg?.slug) return { available: false, reason: 'no-slug' }
+    const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/summary?event=${eventId}`
+    const res = await fetch(url)
+    if (!res.ok) return { available: false, reason: `http-${res.status}` }
+    const data = await res.json()
+    // guardia anti-mejera: el evento debe ser el del partido esperado
+    const evDate = data.header?.competitions?.[0]?.date || ''
+    if (expectedDate && evDate && evDate.slice(0, 10) !== expectedDate.slice(0, 10)) {
+      return { available: false, reason: 'date-mismatch', eventDate: evDate }
+    }
+    const rosters = data.rosters || []
+    if (!rosters.length) return { available: false, reason: 'no-roster' }
+    const mapTeam = (r) => {
+      const starters = (r.roster || [])
+        .filter((p) => p.starter)
+        .sort((a, b) => Number(a.formationPlace || 999) - Number(b.formationPlace || 999))
+        .map((p) => ({
+          jersey: p.jersey || '',
+          name: p.athlete?.displayName || p.athlete?.shortName || '?',
+          position: posShort(p.position?.abbreviation || p.position?.displayName),
+          posFull: p.position?.displayName || '',
+          place: p.formationPlace,
+        }))
+      const bench = (r.roster || [])
+        .filter((p) => !p.starter)
+        .map((p) => ({
+          jersey: p.jersey || '',
+          name: p.athlete?.displayName || '?',
+          position: posShort(p.position?.abbreviation || p.position?.displayName),
+        }))
+      const team = {
+        name: r.team?.displayName || '',
+        id: r.team?.id || '',
+        formation: r.formation || '',
+        starters,
+        bench,
+      }
+      return { ...team, starters: coordsFromFormation(starters) }
+    }
+    const home = rosters.find((r) => r.homeAway === 'home')
+    const away = rosters.find((r) => r.homeAway === 'away')
+    const count = (r) => (r?.roster?.filter((p) => p.starter).length || 0)
+    const hasStarters = count(home) >= 10 || count(away) >= 10
+    if (!hasStarters) return { available: false, reason: 'no-starters' }
+    return {
+      available: true,
+      source: 'ESPN',
+      sourceUrl: `https://www.espn.com/soccer/match/_/gameId/${eventId}`,
+      eventDate: evDate,
+      home: home ? mapTeam(home) : null,
+      away: away ? mapTeam(away) : null,
+    }
+  } catch (e) {
+    return { available: false, reason: 'network', error: String(e) }
+  }
+}
+
+// Busca el evento de FotMob por equipos + fecha (los IDs de ESPN y FotMob no coinciden)
+async function findFotmobEvent(fotmobId, expectedDate, homeName, awayName) {
+  if (!expectedDate) return null
+  const season = fotmobSeason(expectedDate.replaceAll('-', '').slice(0, 8))
+  let all = []
+  try {
+    const fx = await fetchFotmobPage(fotmobId, season, 'fixtures')
+    all = all.concat(fx.props?.pageProps?.fixtures?.allMatches || [])
+    indexFotmobSlugs(all)
+  } catch {}
+  try {
+    const ov = await fetchFotmobPage(fotmobId, season, 'overview')
+    all = all.concat(ov.props?.pageProps?.overview?.leagueOverviewMatches || [])
+    indexFotmobSlugs(all)
+  } catch {}
+  const day = expectedDate.slice(0, 10)
+  const h = normTokens(homeName || '')
+  const a = normTokens(awayName || '')
+  const hit = (tokens, name) => tokens.some((t) => name.includes(t))
+  for (const m of all) {
+    const utc = m.status?.utcTime || ''
+    if (day && utc.slice(0, 10) !== day) continue
+    const hn = (m.home?.name || '').toLowerCase()
+    const an = (m.away?.name || '').toLowerCase()
+    if ((hit(h, hn) && hit(a, an)) || (hit(h, an) && hit(a, hn))) return m
+  }
+  return null
+}
+
+export async function fetchFotmobLineup(fotmobId, eventId, expectedDate, homeName, awayName) {
+  try {
+    let slug = (await fotmobMatchSlug(eventId)) || (await resolveFotmobSlug(fotmobId, eventId, expectedDate))
+    if (!slug && (homeName || awayName)) {
+      const fm = await findFotmobEvent(fotmobId, expectedDate, homeName, awayName)
+      if (fm?.pageUrl) slug = fm.pageUrl.replace(/^\/matches\//, '').replace(/#.*/, '')
+    }
+    if (!slug) return { available: false, reason: 'no-slug' }
+    const res = await fetch(fotmobUrl(`/matches/${slug}`), {
+      headers: { 'User-Agent': 'Mozilla/5.0 Chrome/126.0' },
+    })
+    if (!res.ok) return { available: false, reason: `http-${res.status}` }
+    const html = await res.text()
+    const m = html.match(/id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s)
+    if (!m) return { available: false, reason: 'no-data' }
+    const page = JSON.parse(m[1])
+    const props = page.props?.pageProps || {}
+    const lineup = props.content?.lineup
+    // guardia anti-mejera: la fecha del evento debe coincidir con el partido esperado
+    const evDate = props.header?.status?.utcTime || ''
+    if (expectedDate && evDate && evDate.slice(0, 10) !== expectedDate.slice(0, 10)) {
+      return { available: false, reason: 'date-mismatch', eventDate: evDate }
+    }
+    if (!lineup || lineup.lineupType === 'unavailable' || !lineup.homeTeam) {
+      return { available: false, reason: 'no-lineup' }
+    }
+    const map = (team) => {
+      const starters = (team.starters || []).map((p) => ({
+        jersey: p.shirtNumber || '',
+        name: p.name || `${p.firstName || ''} ${p.lastName || ''}`.trim(),
+        position: '',
+        posFull: '',
+        place: '',
+        layout: { vertical: p.verticalLayout || null },
+      }))
+      return {
+        name: team.name || '',
+        formation: team.formation || '',
+        starters: coordsFromLayout(starters),
+        bench: (team.bench || []).map((p) => ({
+          jersey: p.shirtNumber || '',
+          name: p.name || '',
+          position: '',
+        })),
+      }
+    }
+    return {
+      available: true,
+      source: 'FotMob',
+      sourceUrl: `https://www.fotmob.com/matches/${slug}`,
+      eventDate: evDate,
+      home: map(lineup.homeTeam),
+      away: map(lineup.awayTeam),
+    }
+  } catch (e) {
+    return { available: false, reason: 'network', error: String(e) }
+  }
+}
+
+// Doble fuente con verificación cruzada: si ESPN y FotMob coinciden → verified.
+// La fecha del evento se valida contra el partido para no mostrar XIs de otra jornada.
+export async function fetchLineup(leagueKey, eventId, expectedDate, homeName, awayName) {
+  const cfg = LEAGUES[leagueKey]
+  if (!cfg) throw new Error('Liga desconocida')
+  const jobs = []
+  if (cfg.slug) jobs.push(fetchEspnLineup(leagueKey, eventId, expectedDate))
+  if (cfg.fotmobId && cfg.source !== 'espn') {
+    jobs.push(fetchFotmobLineup(cfg.fotmobId, eventId, expectedDate))
+  } else if (cfg.fotmobId) {
+    // liga ESPN con id FotMob conocido: resolver evento por equipos+fecha
+    jobs.push(fetchFotmobLineup(cfg.fotmobId, null, expectedDate, homeName, awayName))
+  }
+  const settled = await Promise.allSettled(jobs)
+  const results = settled.map((r) => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean)
+  const ok = results.filter((r) => r.available)
+
+  if (ok.length === 0) {
+    const rank = ['no-starters', 'no-lineup', 'no-roster', 'no-data', 'no-slug', 'date-mismatch']
+    let reason = results[0]?.reason || 'network'
+    for (const r of rank) {
+      if (results.some((x) => x.reason === r)) {
+        reason = r
+        break
+      }
+    }
+    return { available: false, reason, fetchedAt: Date.now() }
+  }
+
+  // preferir FotMob como primaria (coordenadas reales del campo)
+  ok.sort((a, b) => {
+    const fa = a.source === 'FotMob' ? 0 : 1
+    const fb = b.source === 'FotMob' ? 0 : 1
+    return fa - fb || Boolean(b.eventDate) - Boolean(a.eventDate)
+  })
+  const primary = ok[0]
+  let verified = false
+  if (ok.length >= 2 && primary.eventDate && ok[1].eventDate) {
+    verified = sameXi(primary, ok[1])
+  }
+  return {
+    ...primary,
+    source: ok.map((r) => r.source).join(' + '),
+    verified,
+    sourcesCount: ok.length,
+    fetchedAt: Date.now(),
+  }
+}
+
+function sameXi(a, b) {
+  const names = (t) => (t?.starters || []).map((p) => normTokens(p.name).join(' ')).sort().join('|')
+  if (!a?.home || !b?.home) return false
+  const aHomeIsT = a.home.name.toLowerCase().includes('tenerife')
+  const bHomeIsT = b.home.name.toLowerCase().includes('tenerife')
+  const at = aHomeIsT ? a.home : a.away
+  const bt = bHomeIsT ? b.home : b.away
+  if (!at || !bt) return false
+  const n1 = names(at)
+  const n2 = names(bt)
+  if (!n1 || !n2) return false
+  const s1 = new Set(n1.split('|'))
+  const inter = n2.split('|').filter((n) => s1.has(n)).length
+  return inter >= 9
+}
+
+// convenience for Tenerife: deduce leagueKey from label
+export function leagueKeyFromLabel(label) {
+  const l = (label || '').toLowerCase()
+  if (l.includes('segunda') && !l.includes('rfef')) return 'segunda'
+  if (l.includes('1ª') || l.includes('primera rfef') || l.includes('1a')) return 'rfef1'
+  if (l.includes('2ª') || l.includes('2a') || l.includes('segunda rfef')) return 'rfef2'
+  if (l.includes('copa')) return 'copa'
+  if (l.includes('primera') && !l.includes('rfef')) return 'primera'
+  return 'segunda'
 }
 
 function parseMinute(display) {
