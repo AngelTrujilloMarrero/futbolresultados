@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   fetchScoreboard,
   fetchRfefBoard,
@@ -558,11 +558,19 @@ function TenerifeLineup({ match }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match.date, match.status, lineup?.available])
 
-  // auto-abrir cuando el XI aparece (pre-vista o ya en juego)
+  // auto-abrir UNA sola vez cuando aparece el XI (el cierre manual se respeta)
+  const autoOpenedRef = useRef(false)
   useEffect(() => {
-    if (!lineup?.available || open) return
+    if (!lineup?.available) {
+      autoOpenedRef.current = false
+      return
+    }
+    if (autoOpenedRef.current || open) return
     const diffMin = (new Date(match.date).getTime() - Date.now()) / 60000
-    if ((diffMin < 60 && diffMin > -30) || match.status === 'in') setOpen(true)
+    if ((diffMin < 60 && diffMin > -30) || match.status === 'in') {
+      setOpen(true)
+      autoOpenedRef.current = true
+    }
   }, [lineup?.available, match.date, match.status, open])
 
   // auto-refresh si panel abierto y aún no hay XI
