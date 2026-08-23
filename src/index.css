@@ -98,6 +98,21 @@ body {
   gap: 14px;
 }
 
+.cal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cal-round {
+  margin: 0 0 -2px;
+  font-size: 13px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--accent);
+}
+
 .cal-day {
   background: var(--surface);
   border: 1px solid var(--border);

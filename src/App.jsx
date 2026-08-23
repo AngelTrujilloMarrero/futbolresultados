@@ -308,26 +308,31 @@ function Standings({ standings }) {
 }
 
 function CalendarView({ state }) {
-  const { groups, loading, error } = state
+  const { sections, loading, error } = state
   if (loading) return <p className="msg">Cargando calendario…</p>
   if (error) return <p className="msg error">{error}</p>
-  if (!groups.length) return <p className="msg">No quedan partidos programados esta temporada.</p>
+  if (!sections.length) return <p className="msg">No quedan partidos programados esta temporada.</p>
   return (
     <div className="calendar">
-      {groups.map((g) => (
-        <section key={g.key} className="cal-day">
-          <h4>{g.label}</h4>
-          {g.matches.map((m) => (
-            <div key={m.id} className="cal-match">
-              {m.group ? <span className="group-chip">{m.group}</span> : null}
-              <img src={m.home.logo} alt="" loading="lazy" />
-              <span className="cal-team home">{m.home.name}</span>
-              <strong className="cal-time">{toTimeLabel(m.date)}</strong>
-              <span className="cal-team">{m.away.name}</span>
-              <img src={m.away.logo} alt="" loading="lazy" />
-            </div>
+      {sections.map((sec, i) => (
+        <div key={i} className="cal-section">
+          {sec.round ? <h3 className="cal-round">Jornada {sec.round}</h3> : null}
+          {sec.days.map((day) => (
+            <section key={day.key} className="cal-day">
+              <h4>{day.label}</h4>
+              {day.matches.map((m) => (
+                <div key={m.id} className="cal-match">
+                  {m.group ? <span className="group-chip">{m.group}</span> : null}
+                  <img src={m.home.logo} alt="" loading="lazy" />
+                  <span className="cal-team home">{m.home.name}</span>
+                  <strong className="cal-time">{toTimeLabel(m.date)}</strong>
+                  <span className="cal-team">{m.away.name}</span>
+                  <img src={m.away.logo} alt="" loading="lazy" />
+                </div>
+              ))}
+            </section>
           ))}
-        </section>
+        </div>
       ))}
     </div>
   )
@@ -343,7 +348,7 @@ export default function App() {
     proximos: { events: [], loading: true, error: null },
   })
   const [calOpen, setCalOpen] = useState(false)
-  const [calendar, setCalendar] = useState({ groups: [], loading: false, error: null })
+  const [calendar, setCalendar] = useState({ sections: [], loading: false, error: null })
   const [tenerife, setTenerife] = useState([])
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
 
@@ -426,20 +431,25 @@ export default function App() {
     fetchSeasonCalendar(league, TIMEZONES.canarias)
       .then((events) => {
         if (cancelled) return
-        const groups = []
-        const index = new Map()
+        const sections = []
         for (const m of events) {
-          const key = m.date.slice(0, 10)
-          if (!index.has(key)) {
-            index.set(key, groups.length)
-            groups.push({ key, label: toDateLabel(m.date), matches: [] })
+          let sec = sections[sections.length - 1]
+          if (!sec || (m.round != null && sec.round !== m.round)) {
+            sec = { round: m.round ?? null, days: [] }
+            sections.push(sec)
           }
-          groups[index.get(key)].matches.push(m)
+          const key = m.date.slice(0, 10)
+          let day = sec.days.find((d) => d.key === key)
+          if (!day) {
+            day = { key, label: toDateLabel(m.date), matches: [] }
+            sec.days.push(day)
+          }
+          day.matches.push(m)
         }
-        setCalendar({ groups, loading: false, error: null })
+        setCalendar({ sections, loading: false, error: null })
       })
       .catch(() => {
-        if (!cancelled) setCalendar({ groups: [], loading: false, error: 'No se pudo cargar el calendario.' })
+        if (!cancelled) setCalendar({ sections: [], loading: false, error: 'No se pudo cargar el calendario.' })
       })
     return () => {
       cancelled = true
@@ -452,7 +462,7 @@ export default function App() {
 
   const selectLeague = (l) => {
     setLeague(l)
-    if (calOpen) setCalendar({ groups: [], loading: true, error: null })
+    if (calOpen) setCalendar({ sections: [], loading: true, error: null })
   }
 
   return (
@@ -485,7 +495,7 @@ export default function App() {
         <button
           className={calOpen ? 'active' : ''}
           onClick={() => {
-            if (!calOpen) setCalendar({ groups: [], loading: true, error: null })
+            if (!calOpen) setCalendar({ sections: [], loading: true, error: null })
             setCalOpen((v) => !v)
           }}
         >

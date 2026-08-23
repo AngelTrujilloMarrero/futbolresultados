@@ -1,6 +1,6 @@
 const LEAGUES = {
-  primera: { source: 'espn', slug: 'esp.1', name: 'LALIGA' },
-  segunda: { source: 'espn', slug: 'esp.2', name: 'LALIGA 2' },
+  primera: { source: 'espn', slug: 'esp.1', fotmobId: 87, name: 'LALIGA' },
+  segunda: { source: 'espn', slug: 'esp.2', fotmobId: 140, name: 'LALIGA 2' },
   rfef1: { source: 'fotmob', fotmobId: 8968, name: 'Primera RFEF' },
   rfef2: { source: 'fotmob', fotmobId: 9138, name: 'Segunda RFEF' },
 }
@@ -92,16 +92,20 @@ async function fetchFotmobOverview(fotmobId, dateStr) {
   const matches = overview.leagueOverviewMatches || []
 
   const groupById = {}
+  const roundById = {}
   try {
     const fixPage = await fetchFotmobPage(fotmobId, season, 'fixtures')
     for (const m of fixPage.props?.pageProps?.fixtures?.allMatches || []) {
       if (m.group != null) groupById[String(m.id)] = String(m.group)
+      const r = m.roundName ?? m.round
+      if (r != null && !Number.isNaN(Number(r))) roundById[String(m.id)] = Number(r)
     }
   } catch {
-    // sin datos de grupo: se ignoran
+    // sin datos de grupo/jornada: se ignoran
   }
   for (const m of matches) {
     if (m.group == null && groupById[String(m.id)] != null) m.group = groupById[String(m.id)]
+    if (m.round == null && roundById[String(m.id)] != null) m.round = roundById[String(m.id)]
   }
 
   const data = {
@@ -137,6 +141,7 @@ function parseFotmobMatch(m, tz) {
     clock: status.scoreStr || status.reason?.short || '',
     venue: '',
     group: m.group != null ? `Grupo ${m.group}` : '',
+    round: m.round != null && !Number.isNaN(Number(m.round)) ? Number(m.round) : null,
     home: {
       name: home.name || '?',
       logo: home.id ? `https://images.fotmob.com/image_resources/logo/teamlogo/${home.id}.png` : '',
@@ -176,9 +181,22 @@ export async function fetchScoreboard(league, dateStr, tz) {
   }
 }
 
+function assignRounds(events) {
+  const sorted = [...events].sort((a, b) => a.date.localeCompare(b.date))
+  const last = new Map()
+  for (const m of sorted) {
+    const round =
+      Math.max(last.get(m.home.name) || 0, last.get(m.away.name) || 0) + 1
+    m.round = round
+    last.set(m.home.name, round)
+    last.set(m.away.name, round)
+  }
+  return sorted
+}
+
 export async function fetchSeasonCalendar(league, tz) {
   const cfg = LEAGUES[league]
-  if (cfg.source === 'fotmob') {
+  if (cfg.fotmobId) {
     const data = await fetchFotmobOverview(cfg.fotmobId, dateKey(0))
     return data.matches
       .filter((m) => !m.status?.finished)
@@ -186,15 +204,42 @@ export async function fetchSeasonCalendar(league, tz) {
       .sort((a, b) => a.date.localeCompare(b.date))
   }
 
-  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(300)}&limit=400`
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`ESPN error ${res.status}`)
-  const data = await res.json()
-  return (data.events || [])
-    .filter((e) => e.competitions?.[0])
-    .map((e) => parseCompetition(e.competitions[0], tz))
-    .filter((m) => m.status !== 'post')
-    .sort((a, b) => a.date.localeCompare(b.date))
+  const fmtYmd = (d) =>
+    `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+  const now = new Date()
+  const seasonYear = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1
+  const endD = new Date(now)
+  endD.setDate(endD.getDate() + 300)
+
+  const windows = []
+  for (let cur = new Date(seasonYear, 6, 1); cur < endD; ) {
+    const wStart = fmtYmd(cur)
+    cur.setDate(cur.getDate() + 300)
+    windows.push(`${wStart}-${cur > endD ? fmtYmd(endD) : fmtYmd(cur)}`)
+  }
+
+  const responses = await Promise.all(
+    windows.map((w) =>
+      fetch(
+        `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${w}&limit=500`,
+      ).then((res) => {
+        if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+        return res.json()
+      }),
+    ),
+  )
+
+  const seen = new Set()
+  const events = []
+  for (const data of responses) {
+    for (const e of data.events || []) {
+      if (!e.competitions?.[0] || seen.has(e.id)) continue
+      seen.add(e.id)
+      events.push(parseCompetition(e.competitions[0], tz))
+    }
+  }
+  assignRounds(events)
+  return events.filter((m) => m.status !== 'post').sort((a, b) => a.date.localeCompare(b.date))
 }
 
 export async function fetchTenerife(tz) {
@@ -320,16 +365,38 @@ export async function fetchMatchEvents(league, eventId) {
 
   const events = []
   for (const ev of raw) {
-    const type = EVENT_TYPES[ev.type?.type]
+    const rawType = ev.type?.type
+    const type = EVENT_TYPES[rawType] ?? (rawType === 'own-goal' ? 'goal' : null)
     if (!type) continue
     const teamName = ev.team?.displayName || ''
-    const player = ev.participants?.[0]?.athlete?.displayName || ''
+    const names = (ev.participants || []).map((p) => p?.athlete?.displayName || '')
+    let player = names[0] || ''
+    let text = ''
+    if (rawType === 'substitution') {
+      player = ''
+      text = names[1] ? `Entra ${names[0]} por ${names[1]}` : `Entra ${names[0]}`
+    } else if (rawType === 'penalty---scored') {
+      if (player) player = `${player} (p)`
+      text = 'Penalti convertido'
+    } else if (rawType === 'own-goal') {
+      if (player) player = `${player} (pp)`
+      text = 'Gol en propia puerta'
+    } else if (rawType === 'second-yellow-card') {
+      if (player) player = `${player} (2ª amarilla)`
+      text = 'Doble amarilla, roja'
+    } else if (type === 'goal') {
+      text = 'Gol'
+    } else if (type === 'yellow') {
+      text = 'Tarjeta amarilla'
+    } else if (type === 'red') {
+      text = 'Tarjeta roja'
+    }
     events.push({
       type,
       minute: parseMinute(ev.clock?.displayValue),
       teamName,
       player,
-      text: ev.text || '',
+      text,
       team: homeNames.includes(teamName) ? 'home' : awayNames.includes(teamName) ? 'away' : '',
     })
   }
