@@ -6,7 +6,9 @@ import {
   fetchStandings,
   fetchSeasonCalendar,
   fetchDesignacionesTV,
+  fetchPrimeraRfefTv,
   fetchMatchEvents,
+  normTokens,
   dateKey,
   toTimeLabel,
   toDateLabel,
@@ -32,6 +34,23 @@ function isTvcMatch(designaciones, m) {
   return designaciones[key].has(m.date.slice(0, 10))
 }
 
+function isMovistarRfef1(list, m) {
+  if (!m?.date) return false
+  const dk = m.date.slice(0, 10)
+  const cands = (list || []).filter((x) => x.date === dk)
+  if (!cands.length) return false
+  const th = normTokens(m.home.name)
+  const ta = normTokens(m.away.name)
+  const hit = (a, b) => a.some((t) => b.includes(t))
+  return cands.some((c) => (hit(th, c.h) && hit(ta, c.a)) || (hit(th, c.a) && hit(ta, c.h)))
+}
+
+const MovistarBadge = () => (
+  <span className="mv-badge" title="Emitido en el canal Primera Federación de Movistar Plus+ (dial 53)">
+    Movistar 1ª RFEF
+  </span>
+)
+
 function TvcBadge() {
   return (
     <span className="tvc-badge" title="Designado en TV Canaria">
@@ -41,7 +60,7 @@ function TvcBadge() {
   )
 }
 
-function MatchCard({ match, onSelect, expanded, tvc }) {
+function MatchCard({ match, onSelect, expanded, tvc, mov }) {
   const isLive = match.status === 'in'
   const isFinal = match.status === 'post'
   const interactive = isLive || isFinal
@@ -58,6 +77,7 @@ function MatchCard({ match, onSelect, expanded, tvc }) {
         {isLive ? <span className="live-dot" /> : null}
         <span>{isFinal ? 'Final' : isLive ? `EN VIVO ${match.clock}` : match.dateLabel}</span>
         {tvc ? <TvcBadge /> : null}
+        {mov ? <MovistarBadge /> : null}
       </div>
       <div className="teams">
         <ScoreBlock team={match.home} />
@@ -336,7 +356,7 @@ const groupColorClass = (g) => {
   return n ? `cal-group-${n[0]}` : ''
 }
 
-function CalendarView({ state, designaciones }) {
+function CalendarView({ state, designaciones, rfef1tv }) {
   const { sections, loading, error } = state
   if (loading) return <p className="msg">Cargando calendario…</p>
   if (error) return <p className="msg error">{error}</p>
@@ -358,7 +378,12 @@ function CalendarView({ state, designaciones }) {
                   <div key={bi} className="cal-block">
                     <div className={`cal-group-name ${groupColorClass(b.group)}`}>{b.group}</div>
                     {b.matches.map((m) => (
-                      <MatchRow key={m.id} match={m} tvc={isTvcMatch(designaciones, m)} />
+                      <MatchRow
+                        key={m.id}
+                        match={m}
+                        tvc={isTvcMatch(designaciones, m)}
+                        mov={isMovistarRfef1(rfef1tv, m)}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -368,6 +393,7 @@ function CalendarView({ state, designaciones }) {
                       match={m}
                       chip={sec.groups > 1 ? null : m.group}
                       tvc={isTvcMatch(designaciones, m)}
+                      mov={isMovistarRfef1(rfef1tv, m)}
                     />
                   ))
                 ),
@@ -380,7 +406,7 @@ function CalendarView({ state, designaciones }) {
   )
 }
 
-function MatchRow({ match: m, chip, tvc }) {
+function MatchRow({ match: m, chip, tvc, mov }) {
   return (
     <div className="cal-match">
       {chip ? <span className={`group-chip ${groupColorClass(chip)}`}>{chip}</span> : null}
@@ -390,6 +416,7 @@ function MatchRow({ match: m, chip, tvc }) {
       <span className="cal-team">{m.away.name}</span>
       <img src={m.away.logo} alt="" loading="lazy" />
       {tvc ? <TvcBadge /> : null}
+      {mov ? <MovistarBadge /> : null}
     </div>
   )
 }
@@ -407,6 +434,7 @@ export default function App() {
   const [calendar, setCalendar] = useState({ sections: [], loading: false, error: null })
   const [tenerife, setTenerife] = useState([])
   const [designaciones, setDesignaciones] = useState({ tenerife: new Set(), 'las-palmas': new Set() })
+  const [rfef1tv, setRfef1tv] = useState([])
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
 
   useEffect(() => {
@@ -417,12 +445,18 @@ export default function App() {
     fetchDesignacionesTV()
       .then((d) => !cancelled && setDesignaciones(d))
       .catch(() => {})
+    fetchPrimeraRfefTv()
+      .then((l) => !cancelled && setRfef1tv(l))
+      .catch(() => {})
     const interval = setInterval(() => {
       fetchTenerife(TIMEZONES.canarias)
         .then((hits) => !cancelled && setTenerife(hits))
         .catch(() => !cancelled && setTenerife([]))
       fetchDesignacionesTV()
         .then((d) => !cancelled && setDesignaciones(d))
+        .catch(() => {})
+      fetchPrimeraRfefTv()
+        .then((l) => !cancelled && setRfef1tv(l))
         .catch(() => {})
     }, 60000)
     return () => {
@@ -656,7 +690,7 @@ export default function App() {
 
       <main className="content">
         {calOpen ? (
-          <CalendarView state={calendar} designaciones={designaciones} />
+          <CalendarView state={calendar} designaciones={designaciones} rfef1tv={rfef1tv} />
         ) : tab === 'clasificacion' ? (
           <Standings standings={standings} />
         ) : (
@@ -676,6 +710,11 @@ export default function App() {
                       expanded={expanded}
                       onSelect={() => setExpandedId(expanded ? null : m.id)}
                       tvc={(tab === 'hoy' || tab === 'proximos') && isTvcMatch(designaciones, m)}
+                      mov={
+                        (tab === 'hoy' || tab === 'proximos') &&
+                        league === 'rfef1' &&
+                        isMovistarRfef1(rfef1tv, m)
+                      }
                     />
                     {expanded ? (
                       <MatchDetail match={m} league={league} />

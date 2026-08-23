@@ -260,6 +260,48 @@ const TVC_TEAMS = [
   { slug: 'las-palmas', match: 'palmas' },
 ]
 
+function decodeEntities(s) {
+  return String(s || '')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(Number(n)))
+    .replace(/&amp;/g, '&')
+}
+
+export function normTokens(s) {
+  return decodeEntities(s)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .split(/[^a-z0-9]+/)
+    .filter((t) => t.length >= 3 && !['club', 'deportivo', 'cf', 'fc', 'ud', 'cd', 'ad', 'sd', 'real'].includes(t))
+}
+
+// Partidos de Primera RFEF emitidos por el canal lineal "Primera Federación"
+// de Movistar Plus+ según futbolenlatv.es
+export async function fetchPrimeraRfefTv() {
+  try {
+    const res = await fetch('https://www.futbolenlatv.es/competicion/primera-division-rfef')
+    if (!res.ok) return []
+    const html = await res.text()
+    const out = []
+    for (const row of html.split(/<tr[\s>]/)) {
+      const li = row.indexOf('listaCanales')
+      if (li === -1) continue
+      const startM = row.match(/itemprop="startDate"\s+content="([\d-]+)/)
+      const nameM = row.match(/itemprop="name"\s+content="([^"]+)"/)
+      if (!startM || !nameM) continue
+      const end = row.indexOf('</ul>', li)
+      const seg = end > -1 ? row.slice(li, end) : row.slice(li)
+      if (!/(movistar|m\+|federaci)/i.test(seg.replace(/&[a-z#0-9]+;/gi, ''))) continue
+      const [home, away] = decodeEntities(nameM[1]).split(/\s+-\s+/)
+      if (!home || !away) continue
+      out.push({ date: startM[1], h: normTokens(home), a: normTokens(away) })
+    }
+    return out
+  } catch {
+    return []
+  }
+}
+
 export async function fetchDesignacionesTV() {
   const load = async (slug) => {
     try {

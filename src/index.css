@@ -402,6 +402,22 @@ body {
   margin-left: auto;
 }
 
+.mv-badge {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  background: #fff;
+  color: #0b6e4f;
+  border: 1px solid #00a550;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  box-shadow: 0 1px 6px rgba(0, 165, 80, 0.3);
+}
+
 .tenerife-league {
   flex-shrink: 0;
   background: var(--accent);
