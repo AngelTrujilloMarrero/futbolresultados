@@ -24,7 +24,24 @@ function ScoreBlock({ team }) {
   )
 }
 
-function MatchCard({ match, onSelect, expanded }) {
+function isTvcMatch(designaciones, m) {
+  if (!m?.date) return false
+  const name = `${m.home.name} ${m.away.name}`.toLowerCase()
+  const key = name.includes('tenerife') ? 'tenerife' : name.includes('palmas') ? 'las-palmas' : null
+  if (!key || !designaciones[key]) return false
+  return designaciones[key].has(m.date.slice(0, 10))
+}
+
+function TvcBadge() {
+  return (
+    <span className="tvc-badge" title="Designado en TV Canaria">
+      <img src="/tv-canaria.svg" alt="TV Canaria" loading="lazy" />
+      TV Canaria
+    </span>
+  )
+}
+
+function MatchCard({ match, onSelect, expanded, tvc }) {
   const isLive = match.status === 'in'
   const isFinal = match.status === 'post'
   const interactive = isLive || isFinal
@@ -39,7 +56,8 @@ function MatchCard({ match, onSelect, expanded }) {
       <div className="match-date">
         {match.group ? <span className="group-chip">{match.group}</span> : null}
         {isLive ? <span className="live-dot" /> : null}
-        {isFinal ? 'Final' : isLive ? `EN VIVO ${match.clock}` : match.dateLabel}
+        <span>{isFinal ? 'Final' : isLive ? `EN VIVO ${match.clock}` : match.dateLabel}</span>
+        {tvc ? <TvcBadge /> : null}
       </div>
       <div className="teams">
         <ScoreBlock team={match.home} />
@@ -318,7 +336,7 @@ const groupColorClass = (g) => {
   return n ? `cal-group-${n[0]}` : ''
 }
 
-function CalendarView({ state }) {
+function CalendarView({ state, designaciones }) {
   const { sections, loading, error } = state
   if (loading) return <p className="msg">Cargando calendario…</p>
   if (error) return <p className="msg error">{error}</p>
@@ -340,12 +358,17 @@ function CalendarView({ state }) {
                   <div key={bi} className="cal-block">
                     <div className={`cal-group-name ${groupColorClass(b.group)}`}>{b.group}</div>
                     {b.matches.map((m) => (
-                      <MatchRow key={m.id} match={m} />
+                      <MatchRow key={m.id} match={m} tvc={isTvcMatch(designaciones, m)} />
                     ))}
                   </div>
                 ) : (
                   b.matches.map((m) => (
-                    <MatchRow key={m.id} match={m} chip={sec.groups > 1 ? null : m.group} />
+                    <MatchRow
+                      key={m.id}
+                      match={m}
+                      chip={sec.groups > 1 ? null : m.group}
+                      tvc={isTvcMatch(designaciones, m)}
+                    />
                   ))
                 ),
               )}
@@ -357,7 +380,7 @@ function CalendarView({ state }) {
   )
 }
 
-function MatchRow({ match: m, chip }) {
+function MatchRow({ match: m, chip, tvc }) {
   return (
     <div className="cal-match">
       {chip ? <span className={`group-chip ${groupColorClass(chip)}`}>{chip}</span> : null}
@@ -366,6 +389,7 @@ function MatchRow({ match: m, chip }) {
       <strong className="cal-time">{toTimeLabel(m.date)}</strong>
       <span className="cal-team">{m.away.name}</span>
       <img src={m.away.logo} alt="" loading="lazy" />
+      {tvc ? <TvcBadge /> : null}
     </div>
   )
 }
@@ -526,23 +550,12 @@ export default function App() {
             {tenerife.map((m) => {
               const isFinal = m.status === 'post'
               const isLive = m.status === 'in'
-              const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
-              const onTvc =
-                m.date && designaciones[m.team || 'tenerife'].has(m.date.slice(0, 10))
               return (
                 <div key={`${m.league}-${m.id}`} className="tenerife-item">
                   <span className="tenerife-league">{m.league}</span>
                   <span className="tenerife-teams">
                     {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
                   </span>
-                  {badgeable ? (
-                    <span
-                      className={`tvc-chip ${onTvc ? 'tvc-si' : 'tvc-no'}`}
-                      title={onTvc ? 'Designado en TV Canaria' : 'Sin designación de TV Canaria'}
-                    >
-                      {onTvc ? 'TV Canaria' : 'Sin TVC'}
-                    </span>
-                  ) : null}
                   <span className="tenerife-date">
                     {isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}
                   </span>
@@ -633,7 +646,7 @@ export default function App() {
 
       <main className="content">
         {calOpen ? (
-          <CalendarView state={calendar} />
+          <CalendarView state={calendar} designaciones={designaciones} />
         ) : tab === 'clasificacion' ? (
           <Standings standings={standings} />
         ) : (
@@ -652,6 +665,7 @@ export default function App() {
                       match={m}
                       expanded={expanded}
                       onSelect={() => setExpandedId(expanded ? null : m.id)}
+                      tvc={(tab === 'hoy' || tab === 'proximos') && isTvcMatch(designaciones, m)}
                     />
                     {expanded ? (
                       <MatchDetail match={m} league={league} />

@@ -296,8 +296,8 @@ export async function fetchTenerife(tz) {
   const hits = []
   const push = (m, league) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
-    if (TVC_TEAMS.some((t) => name.includes(t.match))) {
-      const team = name.includes('tenerife') ? 'tenerife' : 'las-palmas'
+    if (name.includes('tenerife')) {
+      const team = name.includes('palmas') ? 'las-palmas' : 'tenerife'
       hits.push({ ...m, league, team })
     }
   }

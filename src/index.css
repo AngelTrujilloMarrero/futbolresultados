@@ -375,6 +375,33 @@ body {
   border: 1px solid var(--border);
 }
 
+.tvc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  background: #fff;
+  color: #00695c;
+  border: 1px solid #16a34a;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 9px;
+  border-radius: 999px;
+  box-shadow: 0 1px 6px rgba(22, 163, 74, 0.35);
+}
+
+.tvc-badge img {
+  height: 14px;
+  width: auto;
+  display: block;
+}
+
+.match-date .tvc-badge {
+  margin-left: auto;
+}
+
 .tenerife-league {
   flex-shrink: 0;
   background: var(--accent);
