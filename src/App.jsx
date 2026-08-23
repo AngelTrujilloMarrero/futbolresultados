@@ -5,6 +5,7 @@ import {
   fetchTenerife,
   fetchStandings,
   fetchSeasonCalendar,
+  fetchDesignacionesTV,
   fetchMatchEvents,
   dateKey,
   toTimeLabel,
@@ -381,6 +382,7 @@ export default function App() {
   const [calOpen, setCalOpen] = useState(false)
   const [calendar, setCalendar] = useState({ sections: [], loading: false, error: null })
   const [tenerife, setTenerife] = useState([])
+  const [designaciones, setDesignaciones] = useState({ tenerife: new Set(), 'las-palmas': new Set() })
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
 
   useEffect(() => {
@@ -388,10 +390,16 @@ export default function App() {
     fetchTenerife(TIMEZONES.canarias)
       .then((hits) => !cancelled && setTenerife(hits))
       .catch(() => !cancelled && setTenerife([]))
+    fetchDesignacionesTV()
+      .then((d) => !cancelled && setDesignaciones(d))
+      .catch(() => {})
     const interval = setInterval(() => {
       fetchTenerife(TIMEZONES.canarias)
         .then((hits) => !cancelled && setTenerife(hits))
         .catch(() => !cancelled && setTenerife([]))
+      fetchDesignacionesTV()
+        .then((d) => !cancelled && setDesignaciones(d))
+        .catch(() => {})
     }, 60000)
     return () => {
       cancelled = true
@@ -514,28 +522,27 @@ export default function App() {
         <section className="tenerife">
           <h3>⭐ CD Tenerife</h3>
           <p className="tenerife-sub">Seguimiento especial · Segunda · 2ª RFEF · Copa del Rey</p>
-          <div className="tenerife-links">
-            <span>Designaciones TV Canaria:</span>
-            <a href="https://www.futbolenlatv.es/equipo/tenerife" target="_blank" rel="noreferrer">
-              Tenerife
-            </a>
-            <a href="https://www.futbolenlatv.es/equipo/las-palmas" target="_blank" rel="noreferrer">
-              Las Palmas
-            </a>
-            <a href="https://www.rtvc.es/" target="_blank" rel="noreferrer">
-              rtvc.es
-            </a>
-          </div>
           <div className="tenerife-list">
             {tenerife.map((m) => {
               const isFinal = m.status === 'post'
               const isLive = m.status === 'in'
+              const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
+              const onTvc =
+                m.date && designaciones[m.team || 'tenerife'].has(m.date.slice(0, 10))
               return (
                 <div key={`${m.league}-${m.id}`} className="tenerife-item">
                   <span className="tenerife-league">{m.league}</span>
                   <span className="tenerife-teams">
                     {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
                   </span>
+                  {badgeable ? (
+                    <span
+                      className={`tvc-chip ${onTvc ? 'tvc-si' : 'tvc-no'}`}
+                      title={onTvc ? 'Designado en TV Canaria' : 'Sin designación de TV Canaria'}
+                    >
+                      {onTvc ? 'TV Canaria' : 'Sin TVC'}
+                    </span>
+                  ) : null}
                   <span className="tenerife-date">
                     {isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}
                   </span>

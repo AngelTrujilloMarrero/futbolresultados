@@ -255,6 +255,36 @@ export async function fetchTenerifeCopa(tz) {
     .filter((m) => `${m.home.name} ${m.away.name}`.toLowerCase().includes('tenerife'))
 }
 
+const TVC_TEAMS = [
+  { slug: 'tenerife', match: 'tenerife' },
+  { slug: 'las-palmas', match: 'palmas' },
+]
+
+export async function fetchDesignacionesTV() {
+  const load = async (slug) => {
+    try {
+      const res = await fetch(`https://www.futbolenlatv.es/equipo/${slug}`)
+      if (!res.ok) return new Set()
+      const html = await res.text()
+      const days = new Set()
+      for (const row of html.split(/<tr[\s>]/)) {
+        const li = row.indexOf('listaCanales')
+        if (li === -1) continue
+        const startM = row.match(/itemprop="startDate"\s+content="([\d-]+)/)
+        if (!startM) continue
+        const end = row.indexOf('</ul>', li)
+        const seg = end > -1 ? row.slice(li, end) : row.slice(li)
+        if (/tv\s*canaria/i.test(seg)) days.add(startM[1])
+      }
+      return days
+    } catch {
+      return new Set()
+    }
+  }
+  const entries = await Promise.all(TVC_TEAMS.map((t) => load(t.slug)))
+  return Object.fromEntries(TVC_TEAMS.map((t, i) => [t.slug, entries[i]]))
+}
+
 export async function fetchTenerife(tz) {
   const days = [-3, -2, -1, 0, 1, 2, 3, 4]
   const segunda = await Promise.all(
@@ -266,7 +296,10 @@ export async function fetchTenerife(tz) {
   const hits = []
   const push = (m, league) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
-    if (name.includes('tenerife')) hits.push({ ...m, league })
+    if (TVC_TEAMS.some((t) => name.includes(t.match))) {
+      const team = name.includes('tenerife') ? 'tenerife' : 'las-palmas'
+      hits.push({ ...m, league, team })
+    }
   }
   segunda.flatMap((s) => s.events).forEach((m) => push(m, 'Segunda'))
   if (rfef2) {
@@ -311,7 +344,7 @@ export async function fetchStandings(league) {
         gd: r.goalConDiff,
         pts: r.pts,
       }))
-      groups.push({ name: g.leagueName, rows })
+      groups.push({ name: (g.leagueName || '').replace(/^Group\s+(\d+)$/i, 'Grupo $1'), rows })
     }
     return { league: ov.name, groups }
   }
