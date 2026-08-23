@@ -550,12 +550,22 @@ export default function App() {
             {tenerife.map((m) => {
               const isFinal = m.status === 'post'
               const isLive = m.status === 'in'
+              const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
+              const onTvc = isTvcMatch(designaciones, m)
               return (
                 <div key={`${m.league}-${m.id}`} className="tenerife-item">
                   <span className="tenerife-league">{m.league}</span>
                   <span className="tenerife-teams">
                     {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
                   </span>
+                  {badgeable ? (
+                    <span
+                      className={`tvc-chip ${onTvc ? 'tvc-si' : 'tvc-no'}`}
+                      title={onTvc ? 'Designado en TV Canaria' : 'Sin designación de TV Canaria'}
+                    >
+                      {onTvc ? 'Con TV Canaria' : 'Sin TV Canaria'}
+                    </span>
+                  ) : null}
                   <span className="tenerife-date">
                     {isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}
                   </span>
