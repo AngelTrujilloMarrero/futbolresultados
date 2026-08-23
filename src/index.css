@@ -398,6 +398,10 @@ body {
   display: block;
 }
 
+.mv-badge .badge-short {
+  display: none;
+}
+
 .match-date .tvc-badge {
   margin-left: auto;
 }
@@ -416,6 +420,38 @@ body {
   padding: 2px 9px;
   border-radius: 999px;
   box-shadow: 0 1px 6px rgba(0, 165, 80, 0.3);
+}
+
+@media (max-width: 520px) {
+  .match-date {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .tvc-badge,
+  .mv-badge {
+    gap: 3px;
+    font-size: 9px;
+    padding: 2px 6px;
+    letter-spacing: 0.2px;
+  }
+
+  .tvc-badge img {
+    height: 12px;
+  }
+
+  .badge-long {
+    display: none;
+  }
+
+  .mv-badge .badge-short {
+    display: inline;
+  }
+
+  .cal-match {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
 }
 
 .tenerife-league {

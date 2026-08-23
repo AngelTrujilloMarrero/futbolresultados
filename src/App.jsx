@@ -47,7 +47,8 @@ function isMovistarRfef1(list, m) {
 
 const MovistarBadge = () => (
   <span className="mv-badge" title="Emitido en el canal Primera Federación de Movistar Plus+ (dial 53)">
-    Movistar 1ª RFEF
+    <span className="badge-long">Movistar 1ª RFEF</span>
+    <span className="badge-short">M+</span>
   </span>
 )
 
@@ -55,7 +56,7 @@ function TvcBadge() {
   return (
     <span className="tvc-badge" title="Designado en TV Canaria">
       <img src="/tv-canaria.svg" alt="TV Canaria" loading="lazy" />
-      TV Canaria
+      <span className="badge-long">TV Canaria</span>
     </span>
   )
 }
