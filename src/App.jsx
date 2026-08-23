@@ -456,7 +456,7 @@ export default function App() {
     }
   }, [calOpen, league])
 
-  const list = lists[tab]
+  const list = lists[tab] ?? { events: [], loading: false, error: null }
   const shownEvents =
     tab === 'pasado' ? [...list.events].sort((a, b) => b.date.localeCompare(a.date)) : list.events
 
