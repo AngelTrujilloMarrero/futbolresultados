@@ -307,6 +307,11 @@ function Standings({ standings }) {
   )
 }
 
+const groupOrder = (g) => {
+  const n = g && g.match(/\d+/)
+  return n ? Number(n[0]) : Infinity
+}
+
 function CalendarView({ state }) {
   const { sections, loading, error } = state
   if (loading) return <p className="msg">Cargando calendario…</p>
@@ -316,24 +321,45 @@ function CalendarView({ state }) {
     <div className="calendar">
       {sections.map((sec, i) => (
         <div key={i} className="cal-section">
-          {sec.round ? <h3 className="cal-round">Jornada {sec.round}</h3> : null}
+          {sec.round ? (
+            <h3 className="cal-round">
+              <span className="cal-round-label">Jornada</span> {sec.round}
+            </h3>
+          ) : null}
           {sec.days.map((day) => (
             <section key={day.key} className="cal-day">
               <h4>{day.label}</h4>
-              {day.matches.map((m) => (
-                <div key={m.id} className="cal-match">
-                  {m.group ? <span className="group-chip">{m.group}</span> : null}
-                  <img src={m.home.logo} alt="" loading="lazy" />
-                  <span className="cal-team home">{m.home.name}</span>
-                  <strong className="cal-time">{toTimeLabel(m.date)}</strong>
-                  <span className="cal-team">{m.away.name}</span>
-                  <img src={m.away.logo} alt="" loading="lazy" />
-                </div>
-              ))}
+              {day.blocks.map((b, bi) =>
+                sec.groups > 1 && b.group ? (
+                  <div key={bi} className="cal-block">
+                    <div className="cal-group-name">{b.group}</div>
+                    {b.matches.map((m) => (
+                      <MatchRow key={m.id} match={m} />
+                    ))}
+                  </div>
+                ) : (
+                  b.matches.map((m) => (
+                    <MatchRow key={m.id} match={m} chip={sec.groups > 1 ? null : m.group} />
+                  ))
+                ),
+              )}
             </section>
           ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+function MatchRow({ match: m, chip }) {
+  return (
+    <div className="cal-match">
+      {chip ? <span className="group-chip">{chip}</span> : null}
+      <img src={m.home.logo} alt="" loading="lazy" />
+      <span className="cal-team home">{m.home.name}</span>
+      <strong className="cal-time">{toTimeLabel(m.date)}</strong>
+      <span className="cal-team">{m.away.name}</span>
+      <img src={m.away.logo} alt="" loading="lazy" />
     </div>
   )
 }
@@ -435,16 +461,28 @@ export default function App() {
         for (const m of events) {
           let sec = sections[sections.length - 1]
           if (!sec || (m.round != null && sec.round !== m.round)) {
-            sec = { round: m.round ?? null, days: [] }
+            sec = { round: m.round ?? null, groups: new Set(), days: [] }
             sections.push(sec)
           }
+          if (m.group) sec.groups.add(m.group)
           const key = m.date.slice(0, 10)
           let day = sec.days.find((d) => d.key === key)
           if (!day) {
-            day = { key, label: toDateLabel(m.date), matches: [] }
+            day = { key, label: toDateLabel(m.date), blocks: [] }
             sec.days.push(day)
           }
-          day.matches.push(m)
+          let block = day.blocks.find((b) => b.group === (m.group || null))
+          if (!block) {
+            block = { group: m.group || null, matches: [] }
+            day.blocks.push(block)
+          }
+          block.matches.push(m)
+        }
+        for (const sec of sections) {
+          for (const day of sec.days) {
+            day.blocks.sort((a, b) => groupOrder(a.group) - groupOrder(b.group))
+          }
+          sec.groups = sec.groups.size
         }
         setCalendar({ sections, loading: false, error: null })
       })
