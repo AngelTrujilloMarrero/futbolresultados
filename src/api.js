@@ -388,10 +388,12 @@ export async function fetchTenerife(tz) {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
     // solo partidos aún no jugados (el seguimiento especial no muestra pasados)
     if (!name.includes('tenerife') || m.status === 'post') return
-    const team = name.includes('palmas')
-      ? 'las-palmas'
-      : /\btenerife\s+b\b/.test(name)
-        ? 'tenerife-b'
+    // el filial se comprueba antes que "palmas" para no confundir
+    // "Las Palmas B vs Tenerife B" con un derbi del primer equipo
+    const team = /\btenerife\s+b\b/.test(name)
+      ? 'tenerife-b'
+      : name.includes('palmas')
+        ? 'las-palmas'
         : 'tenerife'
     hits.push({ ...m, league, team })
   }
