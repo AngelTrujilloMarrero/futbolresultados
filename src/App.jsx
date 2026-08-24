@@ -732,7 +732,8 @@ function TenerifeCard({ m, tvc }) {
         ) : null}
         <span className="tenerife-date">{isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}</span>
       </div>
-      <TenerifeLineup match={m} />
+      {/* XI inicial solo para el CD Tenerife, no para el filial */}
+      {m.team !== 'tenerife-b' ? <TenerifeLineup match={m} /> : null}
     </div>
   )
 }

@@ -381,10 +381,14 @@ export async function fetchTenerife(tz) {
   const hits = []
   const push = (m, league) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
-    if (name.includes('tenerife')) {
-      const team = name.includes('palmas') ? 'las-palmas' : 'tenerife'
-      hits.push({ ...m, league, team })
-    }
+    // solo partidos aún no jugados (el seguimiento especial no muestra pasados)
+    if (!name.includes('tenerife') || m.status === 'post') return
+    const team = name.includes('palmas')
+      ? 'las-palmas'
+      : /\btenerife\s+b\b/.test(name)
+        ? 'tenerife-b'
+        : 'tenerife'
+    hits.push({ ...m, league, team })
   }
   segunda.flatMap((s) => s.events).forEach((m) => push(m, 'Segunda'))
   if (rfef2) {
