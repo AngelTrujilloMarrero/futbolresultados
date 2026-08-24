@@ -400,7 +400,9 @@ export async function fetchTenerife(tz) {
     rfef2.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, '2ª RFEF'))
   }
   copa.forEach((m) => push(m, 'Copa del Rey'))
-  return hits.sort((a, b) => a.date.localeCompare(b.date))
+  const ordenados = hits.sort((a, b) => a.date.localeCompare(b.date))
+  // el seguimiento especial solo muestra el siguiente partido
+  return ordenados.slice(0, 1)
 }
 
 function parseEspnRow(entry) {
