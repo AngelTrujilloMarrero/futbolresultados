@@ -749,16 +749,18 @@ export default function App() {
   })
   const [calOpen, setCalOpen] = useState(false)
   const [calendar, setCalendar] = useState({ sections: [], loading: false, error: null })
-  const [tenerife, setTenerife] = useState([])
+  const [tenerife, setTenerife] = useState({ hits: [], loading: true })
   const [designaciones, setDesignaciones] = useState({ tenerife: new Set(), 'las-palmas': new Set() })
   const [rfef1tv, setRfef1tv] = useState([])
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
 
   useEffect(() => {
     let cancelled = false
-    fetchTenerife(TIMEZONES.canarias)
-      .then((hits) => !cancelled && setTenerife(hits))
-      .catch(() => !cancelled && setTenerife([]))
+    const loadTen = () =>
+      fetchTenerife(TIMEZONES.canarias)
+        .then((hits) => !cancelled && setTenerife({ hits, loading: false }))
+        .catch(() => !cancelled && setTenerife((p) => ({ ...p, loading: false })))
+    loadTen()
     fetchDesignacionesTV()
       .then((d) => !cancelled && setDesignaciones(d))
       .catch(() => {})
@@ -766,9 +768,7 @@ export default function App() {
       .then((l) => !cancelled && setRfef1tv(l))
       .catch(() => {})
     const interval = setInterval(() => {
-      fetchTenerife(TIMEZONES.canarias)
-        .then((hits) => !cancelled && setTenerife(hits))
-        .catch(() => !cancelled && setTenerife([]))
+      loadTen()
       fetchDesignacionesTV()
         .then((d) => !cancelled && setDesignaciones(d))
         .catch(() => {})
@@ -893,14 +893,18 @@ export default function App() {
 
   return (
     <div className="app">
-      {tenerife.length > 0 ? (
+      {(tenerife.loading || tenerife.hits.length > 0) ? (
         <section className="tenerife">
           <h3>⭐ CD Tenerife</h3>
           <p className="tenerife-sub">Seguimiento especial · Segunda · 2ª RFEF · Copa del Rey · XI inicial ~60' antes</p>
           <div className="tenerife-list">
-            {tenerife.map((m) => (
-              <TenerifeCard key={`${m.league}-${m.id}`} m={m} tvc={isTvcMatch(designaciones, m)} />
-            ))}
+            {tenerife.loading && !tenerife.hits.length ? (
+              <p className="msg">Buscando partidos del CD Tenerife…</p>
+            ) : (
+              tenerife.hits.map((m) => (
+                <TenerifeCard key={`${m.league}-${m.id}`} m={m} tvc={isTvcMatch(designaciones, m)} />
+              ))
+            )}
           </div>
         </section>
       ) : null}

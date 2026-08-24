@@ -129,7 +129,11 @@ async function fetchFotmobOverview(fotmobId, dateStr) {
   const key = `${fotmobId}:${season}`
   if (fotmobCache.has(key)) return fotmobCache.get(key)
 
-  const page = await fetchFotmobPage(fotmobId, season, 'overview')
+  // overview + fixtures en paralelo: reduce a la mitad la carga de las ligas RFEF
+  const [page, fixRes] = await Promise.all([
+    fetchFotmobPage(fotmobId, season, 'overview'),
+    fetchFotmobPage(fotmobId, season, 'fixtures').catch(() => null),
+  ])
   const overview = page.props?.pageProps?.overview || {}
   const matches = overview.leagueOverviewMatches || []
   indexFotmobSlugs(matches)
@@ -137,9 +141,8 @@ async function fetchFotmobOverview(fotmobId, dateStr) {
   const groupById = {}
   const roundById = {}
   try {
-    const fixPage = await fetchFotmobPage(fotmobId, season, 'fixtures')
-    indexFotmobSlugs(fixPage.props?.pageProps?.fixtures?.allMatches)
-    for (const m of fixPage.props?.pageProps?.fixtures?.allMatches || []) {
+    indexFotmobSlugs(fixRes?.props?.pageProps?.fixtures?.allMatches)
+    for (const m of fixRes?.props?.pageProps?.fixtures?.allMatches || []) {
       if (m.group != null) groupById[String(m.id)] = String(m.group)
       const r = m.roundName ?? m.round
       if (r != null && !Number.isNaN(Number(r))) roundById[String(m.id)] = Number(r)
@@ -288,7 +291,7 @@ export async function fetchSeasonCalendar(league, tz) {
 
 export async function fetchTenerifeCopa(tz) {
   const cfg = LEAGUES.copa
-  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(-6)}-${dateKey(90)}&limit=200`
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(90)}&limit=200`
   const res = await fetch(url)
   if (!res.ok) throw new Error(`ESPN error ${res.status}`)
   const data = await res.json()
@@ -370,13 +373,15 @@ export async function fetchDesignacionesTV() {
   return Object.fromEntries(TVC_TEAMS.map((t, i) => [t.slug, entries[i]]))
 }
 
+// Todas las fuentes en paralelo para que el seguimiento especial cargue a la vez que el resto
 export async function fetchTenerife(tz) {
-  const days = [-3, -2, -1, 0, 1, 2, 3, 4]
-  const segunda = await Promise.all(
-    days.map((o) => fetchScoreboard('segunda', dateKey(o), tz).catch(() => ({ events: [] }))),
-  )
-  const rfef2 = await fetchRfefBoard(LEAGUES.rfef2.fotmobId, tz).catch(() => null)
-  const copa = await fetchTenerifeCopa(tz).catch(() => [])
+  const days = [0, 1, 2, 3, 4]
+  const [segunda, rfef2, copa] = await Promise.all([
+    Promise.all(days.map((o) => fetchScoreboard('segunda', dateKey(o), tz).catch(() => ({ events: [] })))),
+    // solo temporada actual: los pasados ya no se muestran
+    fetchFotmobOverview(LEAGUES.rfef2.fotmobId, dateKey(0)).catch(() => null),
+    fetchTenerifeCopa(tz).catch(() => []),
+  ])
 
   const hits = []
   const push = (m, league) => {
@@ -392,9 +397,7 @@ export async function fetchTenerife(tz) {
   }
   segunda.flatMap((s) => s.events).forEach((m) => push(m, 'Segunda'))
   if (rfef2) {
-    rfef2.pasado.forEach((m) => push(m, '2ª RFEF'))
-    rfef2.hoy.forEach((m) => push(m, '2ª RFEF'))
-    rfef2.proximos.forEach((m) => push(m, '2ª RFEF'))
+    rfef2.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, '2ª RFEF'))
   }
   copa.forEach((m) => push(m, 'Copa del Rey'))
   return hits.sort((a, b) => a.date.localeCompare(b.date))
