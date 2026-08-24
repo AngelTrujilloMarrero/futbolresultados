@@ -896,7 +896,7 @@ export default function App() {
       {(tenerife.loading || tenerife.hits.length > 0) ? (
         <section className="tenerife">
           <h3>⭐ CD Tenerife</h3>
-          <p className="tenerife-sub">Seguimiento especial · Próximo partido · XI inicial ~60' antes</p>
+          <p className="tenerife-sub">Seguimiento especial · Próximos partidos · XI inicial ~60' antes</p>
           <div className="tenerife-list">
             {tenerife.loading && !tenerife.hits.length ? (
               <p className="msg">Buscando partidos del CD Tenerife…</p>

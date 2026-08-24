@@ -401,8 +401,13 @@ export async function fetchTenerife(tz) {
   }
   copa.forEach((m) => push(m, 'Copa del Rey'))
   const ordenados = hits.sort((a, b) => a.date.localeCompare(b.date))
-  // el seguimiento especial solo muestra el siguiente partido
-  return ordenados.slice(0, 1)
+  // el seguimiento especial muestra el siguiente partido de cada equipo (primer equipo y filial)
+  return [
+    ordenados.find((m) => m.team !== 'tenerife-b'),
+    ordenados.find((m) => m.team === 'tenerife-b'),
+  ]
+    .filter(Boolean)
+    .sort((a, b) => a.date.localeCompare(b.date))
 }
 
 function parseEspnRow(entry) {
