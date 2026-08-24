@@ -845,7 +845,11 @@ export async function fetchFotmobLineup(fotmobId, eventId, expectedDate, homeNam
     if (expectedDate && evDate && evDate.slice(0, 10) !== expectedDate.slice(0, 10)) {
       return { available: false, reason: 'date-mismatch', eventDate: evDate }
     }
-    if (!lineup || lineup.lineupType === 'unavailable' || !lineup.homeTeam) {
+    // Solo aceptar el XI publicado para ESTE partido: 'lastStarting11' es una
+    // vista previa de FotMob con el XI del último partido ya disputado.
+    const luType = lineup?.lineupType
+    const publishedForMatch = !luType || luType === 'confirmed' || luType === 'standard'
+    if (!lineup || !publishedForMatch || !lineup.homeTeam) {
       return { available: false, reason: 'no-lineup' }
     }
     const map = (team) => {
