@@ -375,9 +375,23 @@ export async function fetchDesignacionesTV() {
 
 // Todas las fuentes en paralelo para que el seguimiento especial cargue a la vez que el resto
 export async function fetchTenerife(tz) {
-  const days = [0, 1, 2, 3, 4]
-  const [segunda, rfef2, copa] = await Promise.all([
-    Promise.all(days.map((o) => fetchScoreboard('segunda', dateKey(o), tz).catch(() => ({ events: [] })))),
+  const [segundaEvents, rfef2, copa] = await Promise.all([
+    // Segunda: ventana amplia (0-90 días) para que, una vez acabado un partido,
+    // el siguiente aparezca aunque falte más de 5 días (antes solo miraba 0-4).
+    (async () => {
+      try {
+        const cfg = LEAGUES.segunda
+        const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(90)}&limit=200`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+        const data = await res.json()
+        return (data.events || [])
+          .filter((e) => e.competitions?.[0])
+          .map((e) => parseCompetition(e.competitions[0], tz))
+      } catch {
+        return []
+      }
+    })(),
     // solo temporada actual: los pasados ya no se muestran
     fetchFotmobOverview(LEAGUES.rfef2.fotmobId, dateKey(0)).catch(() => null),
     fetchTenerifeCopa(tz).catch(() => []),
@@ -397,7 +411,7 @@ export async function fetchTenerife(tz) {
         : 'tenerife'
     hits.push({ ...m, league, team })
   }
-  segunda.flatMap((s) => s.events).forEach((m) => push(m, 'Segunda'))
+  segundaEvents.forEach((m) => push(m, 'Segunda'))
   if (rfef2) {
     rfef2.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, '2ª RFEF'))
   }
