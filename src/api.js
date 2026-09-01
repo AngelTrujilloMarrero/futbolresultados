@@ -4,6 +4,8 @@ const LEAGUES = {
   rfef1: { source: 'fotmob', fotmobId: 8968, name: 'Primera RFEF' },
   rfef2: { source: 'fotmob', fotmobId: 9138, name: 'Segunda RFEF' },
   copa: { source: 'espn', slug: 'esp.copa_del_rey', name: 'Copa del Rey' },
+  ligaf: { source: 'espn', slug: 'esp.w.1', fotmobId: 9907, name: 'Liga F' },
+  copaReina: { source: 'espn', slug: 'esp.copa_de_la_reina', name: 'Copa de la Reina' },
 }
 
 const TIMEZONES = {
@@ -424,6 +426,92 @@ export async function fetchTenerife(tz) {
   ]
     .filter(Boolean)
     .sort((a, b) => a.date.localeCompare(b.date))
+}
+
+export async function fetchCostaAdejeCopa(tz) {
+  const cfg = LEAGUES.copaReina
+  const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(90)}&limit=200`
+  try {
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+    const data = await res.json()
+    return (data.events || [])
+      .filter((e) => e.competitions?.[0])
+      .map((e) => parseCompetition(e.competitions[0], tz))
+      .filter((m) => `${m.home.name} ${m.away.name}`.toLowerCase().includes('tenerife'))
+  } catch {
+    return []
+  }
+}
+
+// Seguimiento especial para el Costa Adeje Tenerife (Liga F femenino)
+export async function fetchCostaAdeje(tz) {
+  const [ligaFEvents, ligaFFotmob, copaReina] = await Promise.all([
+    (async () => {
+      try {
+        const cfg = LEAGUES.ligaf
+        const url = `https://site.api.espn.com/apis/site/v2/sports/soccer/${cfg.slug}/scoreboard?dates=${dateKey(0)}-${dateKey(90)}&limit=200`
+        const res = await fetch(url)
+        if (!res.ok) throw new Error(`ESPN error ${res.status}`)
+        const data = await res.json()
+        return (data.events || [])
+          .filter((e) => e.competitions?.[0])
+          .map((e) => parseCompetition(e.competitions[0], tz))
+      } catch {
+        return []
+      }
+    })(),
+    fetchFotmobOverview(LEAGUES.ligaf.fotmobId, dateKey(0)).catch(() => null),
+    fetchCostaAdejeCopa(tz).catch(() => []),
+  ])
+
+  const hits = []
+  const seen = new Set()
+  const push = (m, league) => {
+    const name = `${m.home.name} ${m.away.name}`.toLowerCase()
+    if (!name.includes('tenerife') || m.status === 'post') return
+    const key = `${league}-${m.id}`
+    if (seen.has(key)) return
+    seen.add(key)
+    hits.push({ ...m, league, team: 'costa-adeje' })
+  }
+
+  ligaFEvents.forEach((m) => push(m, 'Liga F'))
+  if (ligaFFotmob) {
+    ligaFFotmob.matches
+      .map((m) => parseFotmobMatch(m, tz))
+      .forEach((m) => push(m, 'Liga F'))
+  }
+  copaReina.forEach((m) => push(m, 'Copa de la Reina'))
+
+  const ordenados = hits.sort((a, b) => a.date.localeCompare(b.date))
+  // deduplicar por fecha+rival aproximado (ESPN + FotMob pueden duplicar)
+  const dedup = []
+  for (const m of ordenados) {
+    const day = m.date.slice(0, 10)
+    const rival = m.home.name.toLowerCase().includes('tenerife') ? m.away.name : m.home.name
+    const rivalLow = rival.toLowerCase()
+    const toks = normTokens(rival)
+    const rawToks = rivalLow.normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(Boolean)
+    const isDup = dedup.some((d) => {
+      if (d.date.slice(0, 10) !== day) return false
+      if (d.league !== m.league) return false
+      const dr = d.home.name.toLowerCase().includes('tenerife') ? d.away.name : d.home.name
+      const drLow = dr.toLowerCase()
+      if (rivalLow === drLow) return true
+      if (rivalLow.includes(drLow) || drLow.includes(rivalLow)) return true
+      const dt = normTokens(dr)
+      const rawDt = drLow.normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(Boolean)
+      if (toks.length && dt.length && toks.some((t) => dt.includes(t))) return true
+      if (rawToks.some((t) => rawDt.includes(t) && t.length >= 3)) return true
+      return false
+    })
+    if (isDup) continue
+    dedup.push(m)
+  }
+  // Seguimiento especial muestra solo el próximo partido de Liga F (como CD Tenerife: 1 por equipo)
+  const ligaFHits = dedup.filter((m) => m.league === 'Liga F').slice(0, 1)
+  return ligaFHits
 }
 
 function parseEspnRow(entry) {
@@ -979,6 +1067,8 @@ function sameXi(a, b) {
 // convenience for Tenerife: deduce leagueKey from label
 export function leagueKeyFromLabel(label) {
   const l = (label || '').toLowerCase()
+  if (l.includes('liga f') || l.includes('ligaf') || l.includes('femenin') || l.includes('costa adeje')) return 'ligaf'
+  if (l.includes('copa de la reina') || l.includes('reina')) return 'copaReina'
   if (l.includes('segunda') && !l.includes('rfef')) return 'segunda'
   if (l.includes('1ª') || l.includes('primera rfef') || l.includes('1a')) return 'rfef1'
   if (l.includes('2ª') || l.includes('2a') || l.includes('segunda rfef')) return 'rfef2'

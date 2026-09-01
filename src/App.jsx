@@ -3,6 +3,7 @@ import {
   fetchScoreboard,
   fetchRfefBoard,
   fetchTenerife,
+  fetchCostaAdeje,
   fetchStandings,
   fetchSeasonCalendar,
   fetchDesignacionesTV,
@@ -713,6 +714,215 @@ function TenerifeLineup({ match }) {
   )
 }
 
+function CostaAdejeLineup({ match }) {
+  const [open, setOpen] = useState(false)
+  const [lineup, setLineup] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+
+  const isCostaHome = (match.home.name || '').toLowerCase().includes('tenerife')
+  const load = async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const key = leagueKeyFromLabel(match.league)
+      const data = await fetchLineup(key, match.id, match.date, match.home.name, match.away.name)
+      setLineup(data)
+      if (!data.available) {
+        const r = data.reason || ''
+        if (r === 'no-slug' || r === 'no-lineup') setError('XI aún no publicado (se publica ~60 min antes)')
+        else if (r === 'no-roster' || r === 'no-starters') setError('XI aún no disponible en la fuente')
+        else if (r === 'network' || r.startsWith('http')) setError('Fuente temporalmente no disponible')
+        else setError('XI aún no disponible')
+      }
+    } catch {
+      setError('No se pudo cargar el XI')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleToggle = () => {
+    const next = !open
+    setOpen(next)
+    if (next && !lineup && !loading) load()
+  }
+
+  useEffect(() => {
+    if (lineup?.available) return
+    if (match.status === 'post') return
+    const checkWindow = () => {
+      const diffMs = new Date(match.date).getTime() - Date.now()
+      const diffMin = diffMs / 60000
+      if (match.status === 'in') return true
+      return diffMin < 90 && diffMin > -240
+    }
+    if (!checkWindow()) return
+    if (!lineup && !loading) load()
+    const id = setInterval(() => {
+      if (!checkWindow()) return
+      load()
+    }, 30000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [match.date, match.status, lineup?.available])
+
+  const autoOpenedRef = useRef(false)
+  useEffect(() => {
+    if (!lineup?.available) {
+      autoOpenedRef.current = false
+      return
+    }
+    if (autoOpenedRef.current || open) return
+    const diffMin = (new Date(match.date).getTime() - Date.now()) / 60000
+    if ((diffMin < 60 && diffMin > -30) || match.status === 'in') {
+      setOpen(true)
+      autoOpenedRef.current = true
+    }
+  }, [lineup?.available, match.date, match.status, open])
+
+  useEffect(() => {
+    if (!open) return
+    if (lineup?.available) return
+    if (match.status === 'post') return
+    const ms = Date.now()
+    const matchMs = new Date(match.date).getTime()
+    const diffHours = (matchMs - ms) / 3600000
+    if (diffHours > 36 || diffHours < -4) return
+    const id = setInterval(load, 30000)
+    return () => clearInterval(id)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, lineup, match.date, match.status])
+
+  const tenSide = lineup?.available
+    ? lineup.home?.name?.toLowerCase().includes('tenerife')
+      ? lineup.home
+      : lineup.away?.name?.toLowerCase().includes('tenerife')
+        ? lineup.away
+        : isCostaHome
+          ? lineup.home
+          : lineup.away
+    : null
+  const rivalSide = lineup?.available
+    ? tenSide === lineup.home
+      ? lineup.away
+      : lineup.home
+    : null
+
+  const xiReady = Boolean(lineup?.available)
+  return (
+    <div className="tenerife-xi">
+      <button className={`xi-toggle ${open ? 'active' : ''} ${xiReady && !open ? 'xi-ready' : ''} costa-xi-toggle`} onClick={handleToggle}>
+        {open ? '▲ Ocultar XI' : xiReady ? '✓ Ver XI inicial' : '▼ Ver XI inicial'}
+        {!open && !xiReady && match.status === 'pre' ? <span className="xi-hint">· se publica ~60' antes</span> : null}
+        {!open && xiReady ? <span className="xi-hint xi-hint-ready">· ¡disponible!</span> : null}
+      </button>
+      {open ? (
+        <div className="xi-panel">
+          {loading ? <p className="xi-msg">Cargando XI inicial…</p> : null}
+          {error && !loading ? (
+            <div className="xi-msg">
+              <p>{error}.</p>
+              <span className="xi-sub">
+                El XI oficial se publica unos 60 min antes en{' '}
+                <a href="https://www.udgtenerife.com" target="_blank" rel="noreferrer">udgtenerife.com</a>{' '}
+                y <a href="https://x.com/CostaAdejeTFE" target="_blank" rel="noreferrer">X @CostaAdejeTFE</a>.{' '}
+                {(() => {
+                  const k = leagueKeyFromLabel(match.league)
+                  if (k === 'ligaf' || k === 'copaReina') {
+                    return (
+                      <>
+                        Ver también en{' '}
+                        <a href={`https://www.espn.com/soccer/match/_/gameId/${match.id}`} target="_blank" rel="noreferrer">ESPN Match Center</a>{' '}
+                      </>
+                    )
+                  }
+                  return null
+                })()}
+                · <button className="xi-retry" onClick={load}>Reintentar</button>
+              </span>
+            </div>
+          ) : null}
+          {lineup?.available && tenSide ? (
+            <>
+              <div className="xi-header">
+                <span className="xi-team">XI Costa Adeje Tenerife</span>
+                {tenSide.formation ? <span className="xi-formation costa-formation">{tenSide.formation}</span> : null}
+                {lineup.verified ? <span className="xi-verified" title={`Coincide en ${lineup.sourcesCount} fuentes`}>✓ verificado</span> : null}
+                <span className="xi-source">Fuente: <a href={lineup.sourceUrl} target="_blank" rel="noreferrer">{lineup.source}</a> · oficial <a href="https://www.udgtenerife.com" target="_blank" rel="noreferrer">UDG</a></span>
+              </div>
+              <div className="xi-context">
+                {match.home.name} vs {match.away.name} · {new Date(match.date).toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })} · {toTimeLabel(match.date)}
+              </div>
+              <div className="xi-board">
+                <svg viewBox={`0 0 ${PITCH_W} ${PITCH_H}`} role="img" aria-label="XI en el campo">
+                  <rect width={PITCH_W} height={PITCH_H} fill="var(--pitch-green)" />
+                  <g stroke="var(--pitch-line)" strokeWidth={2} fill="none">
+                    <rect x={2} y={2} width={PITCH_W - 4} height={PITCH_H - 4} rx={4} />
+                    <line x1={PITCH_W / 2} y1={0} x2={PITCH_W / 2} y2={PITCH_H} />
+                    <circle cx={PITCH_W / 2} cy={PITCH_H / 2} r={45} />
+                  </g>
+                  <XIDots home={lineup.home} away={lineup.away} />
+                </svg>
+                <div className="xi-board-labels">
+                  <span style={{ color: 'var(--team-home)' }}>■ {lineup.home?.name}</span>
+                  <span style={{ color: 'var(--team-away)' }}>■ {lineup.away?.name}</span>
+                </div>
+              </div>
+              <ol className="xi-list">
+                {tenSide.starters.map((p, i) => (
+                  <li key={i}>
+                    <span className="xi-num">{p.jersey}</span>
+                    <span className="xi-pos">{p.position || 'XI'}</span>
+                    <span className="xi-name">{p.name}</span>
+                  </li>
+                ))}
+              </ol>
+              {tenSide.bench?.length ? (
+                <details className="xi-bench">
+                  <summary>Suplentes ({tenSide.bench.length})</summary>
+                  <ul>
+                    {tenSide.bench.map((p, i) => (
+                      <li key={i}><span className="xi-num">{p.jersey}</span> {p.name}</li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
+              {rivalSide?.starters?.length ? (
+                <details className="xi-bench">
+                  <summary>XI rival: {rivalSide.name} {rivalSide.formation ? `(${rivalSide.formation})` : ''}</summary>
+                  <ol className="xi-list">
+                    {rivalSide.starters.map((p, i) => (
+                      <li key={i}><span className="xi-num">{p.jersey}</span> {p.name}</li>
+                    ))}
+                  </ol>
+                </details>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function CostaAdejeCard({ m }) {
+  const isFinal = m.status === 'post'
+  const isLive = m.status === 'in'
+  return (
+    <div className="tenerife-item-wrap">
+      <div className="tenerife-item costa-item">
+        <span className="tenerife-league costa-league">{m.league}</span>
+        <span className="tenerife-teams">
+          {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
+        </span>
+        <span className="tenerife-date">{isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}</span>
+      </div>
+      <CostaAdejeLineup match={m} />
+    </div>
+  )
+}
+
 function TenerifeCard({ m, tvc }) {
   const isFinal = m.status === 'post'
   const isLive = m.status === 'in'
@@ -750,6 +960,7 @@ export default function App() {
   const [calOpen, setCalOpen] = useState(false)
   const [calendar, setCalendar] = useState({ sections: [], loading: false, error: null })
   const [tenerife, setTenerife] = useState({ hits: [], loading: true })
+  const [costaAdeje, setCostaAdeje] = useState({ hits: [], loading: true })
   const [designaciones, setDesignaciones] = useState({ tenerife: new Set(), 'las-palmas': new Set() })
   const [rfef1tv, setRfef1tv] = useState([])
   const [standings, setStandings] = useState({ groups: [], loading: true, error: null })
@@ -760,7 +971,12 @@ export default function App() {
       fetchTenerife(TIMEZONES.canarias)
         .then((hits) => !cancelled && setTenerife({ hits, loading: false }))
         .catch(() => !cancelled && setTenerife((p) => ({ ...p, loading: false })))
+    const loadCosta = () =>
+      fetchCostaAdeje(TIMEZONES.canarias)
+        .then((hits) => !cancelled && setCostaAdeje({ hits, loading: false }))
+        .catch(() => !cancelled && setCostaAdeje((p) => ({ ...p, loading: false })))
     loadTen()
+    loadCosta()
     fetchDesignacionesTV()
       .then((d) => !cancelled && setDesignaciones(d))
       .catch(() => {})
@@ -769,6 +985,7 @@ export default function App() {
       .catch(() => {})
     const interval = setInterval(() => {
       loadTen()
+      loadCosta()
       fetchDesignacionesTV()
         .then((d) => !cancelled && setDesignaciones(d))
         .catch(() => {})
@@ -893,18 +1110,27 @@ export default function App() {
 
   return (
     <div className="app">
-      {(tenerife.loading || tenerife.hits.length > 0) ? (
+      {(tenerife.loading || costaAdeje.loading || tenerife.hits.length > 0 || costaAdeje.hits.length > 0) ? (
         <section className="tenerife">
-          <h3>⭐ CD Tenerife</h3>
-          <p className="tenerife-sub">Seguimiento especial · Próximos partidos · XI inicial ~60' antes</p>
+          <h3>⭐ Seguimiento especial</h3>
+          <p className="tenerife-sub">CD Tenerife · Tenerife B · Costa Adeje Tenerife — Próximos partidos · XI inicial ~60' antes</p>
           <div className="tenerife-list">
-            {tenerife.loading && !tenerife.hits.length ? (
-              <p className="msg">Buscando partidos del CD Tenerife…</p>
-            ) : (
-              tenerife.hits.map((m) => (
-                <TenerifeCard key={`${m.league}-${m.id}`} m={m} tvc={isTvcMatch(designaciones, m)} />
-              ))
-            )}
+            {tenerife.loading && costaAdeje.loading && !tenerife.hits.length && !costaAdeje.hits.length ? (
+              <p className="msg">Buscando partidos…</p>
+            ) : (() => {
+              const combined = [
+                ...tenerife.hits.map((m) => ({ ...m, _kind: 'tenerife' })),
+                ...costaAdeje.hits.map((m) => ({ ...m, _kind: 'costa' })),
+              ].sort((a, b) => a.date.localeCompare(b.date))
+              if (!combined.length) return <p className="msg">Sin próximos partidos programados.</p>
+              return combined.map((m) =>
+                m._kind === 'costa' ? (
+                  <CostaAdejeCard key={`costa-${m.league}-${m.id}`} m={m} />
+                ) : (
+                  <TenerifeCard key={`tene-${m.league}-${m.id}`} m={m} tvc={isTvcMatch(designaciones, m)} />
+                ),
+              )
+            })()}
           </div>
         </section>
       ) : null}
@@ -945,6 +1171,12 @@ export default function App() {
           onClick={() => selectLeague('rfef2')}
         >
           2ª RFEF
+        </button>
+        <button
+          className={league === 'ligaf' ? 'active' : ''}
+          onClick={() => selectLeague('ligaf')}
+        >
+          Liga F
         </button>
       </nav>
 
