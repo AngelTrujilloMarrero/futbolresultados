@@ -998,16 +998,38 @@ function RadioPlayer() {
     [],
   )
 
+  const handlePlay = (id) => {
+    setPlaying(id)
+  }
+
+  const handleStop = (id) => {
+    stopMeter(id)
+    setPlaying((p) => (p === id ? null : p))
+  }
+
+  // Corte total del directo: pausa + descarga el stream para no
+  // mantener la conexión abierta ni acumular retraso respecto al vivo
+  const stopStream = (id) => {
+    const el = audioRefs.current[id]
+    if (!el) return
+    if (!el.paused) el.pause()
+    el.removeAttribute('src')
+    el.load()
+    handleStop(id)
+  }
+
   const toggle = (id) => {
     const el = audioRefs.current[id]
     if (!el) return
     if (!el.paused) {
-      el.pause()
+      stopStream(id)
       return
     }
-    Object.entries(audioRefs.current).forEach(([key, other]) => {
-      if (key !== id && other && !other.paused) other.pause()
+    Object.keys(audioRefs.current).forEach((key) => {
+      if (key !== id) stopStream(key)
     })
+    const station = RADIOS.find((s) => s.id === id)
+    if (station && el.getAttribute('src') !== station.stream) el.src = station.stream
     el.volume = volumeOf(id)
     ensureGraph(id)
     el.play().catch(() => setPlaying(null))
@@ -1017,15 +1039,6 @@ function RadioPlayer() {
     setVolumes((p) => ({ ...p, [id]: v }))
     const el = audioRefs.current[id]
     if (el) el.volume = v
-  }
-
-  const handlePlay = (id) => {
-    setPlaying(id)
-  }
-
-  const handleStop = (id) => {
-    stopMeter(id)
-    setPlaying((p) => (p === id ? null : p))
   }
 
   // El bucle del vúmetro debe arrancar cuando la barra ya está montada
@@ -1049,10 +1062,10 @@ function RadioPlayer() {
                 <button
                   className={`radio-play${isPlaying ? ' playing' : ''}`}
                   onClick={() => toggle(r.id)}
-                  aria-label={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
-                  title={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
+                  aria-label={isPlaying ? `Detener ${r.name}` : `Escuchar ${r.name}`}
+                  title={isPlaying ? `Detener ${r.name}` : `Escuchar ${r.name}`}
                 >
-                  {isPlaying ? '⏸' : '▶'}
+                  {isPlaying ? '■' : '▶'}
                 </button>
                 <div className="radio-head">
                   <span className="radio-name">
