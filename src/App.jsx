@@ -924,20 +924,109 @@ const RADIOS = [
 ]
 
 function RadioPlayer() {
-  const refs = useRef({})
+  const audioRefs = useRef({})
+  const meterRefs = useRef({})
+  const graphRefs = useRef({})
+  const ctxRef = useRef(null)
   const [playing, setPlaying] = useState(null)
+  const [volumes, setVolumes] = useState({})
+
+  const volumeOf = (id) => volumes[id] ?? 1
+
+  // Crea el grafo Web Audio (fuente -> analizador -> salida) una sola vez por emisora
+  const ensureGraph = (id) => {
+    if (graphRefs.current[id]) return graphRefs.current[id]
+    const el = audioRefs.current[id]
+    const Ctx = window.AudioContext || window.webkitAudioContext
+    if (!el || !Ctx) return null
+    if (!ctxRef.current) ctxRef.current = new Ctx()
+    const ctx = ctxRef.current
+    if (ctx.state === 'suspended') ctx.resume().catch(() => {})
+    try {
+      const src = ctx.createMediaElementSource(el)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 512
+      src.connect(analyser)
+      analyser.connect(ctx.destination)
+      const g = { analyser, bytes: new Uint8Array(analyser.fftSize), display: 0, peak: 0, raf: 0 }
+      graphRefs.current[id] = g
+      return g
+    } catch {
+      return null
+    }
+  }
+
+  // Bucle del vúmetro: RMS del dominio temporal -> barra verde + pico
+  const tick = (id) => {
+    const g = graphRefs.current[id]
+    const m = meterRefs.current[id]
+    const el = audioRefs.current[id]
+    if (!g || !m || !el || el.paused) return
+    g.analyser.getByteTimeDomainData(g.bytes)
+    let sum = 0
+    for (let i = 0; i < g.bytes.length; i++) {
+      const v = (g.bytes[i] - 128) / 128
+      sum += v * v
+    }
+    const level = Math.min(1, Math.sqrt(sum / g.bytes.length) * 3)
+    g.display = Math.max(level, g.display - 0.03)
+    g.peak = Math.max(level, g.peak - 0.006)
+    if (m.fill) m.fill.style.width = `${(g.display * 100).toFixed(1)}%`
+    if (m.peak) {
+      m.peak.style.left = `${(g.peak * 100).toFixed(1)}%`
+      m.peak.style.background = g.peak > 0.92 ? '#ef4444' : g.peak > 0.75 ? '#facc15' : '#4ade80'
+    }
+    g.raf = requestAnimationFrame(() => tick(id))
+  }
+
+  const stopMeter = (id) => {
+    const g = graphRefs.current[id]
+    if (g?.raf) cancelAnimationFrame(g.raf)
+    if (g) {
+      g.display = 0
+      g.peak = 0
+    }
+  }
+
+  useEffect(
+    () => () => {
+      Object.values(graphRefs.current).forEach((g) => g?.raf && cancelAnimationFrame(g.raf))
+      ctxRef.current?.close().catch(() => {})
+      ctxRef.current = null
+      graphRefs.current = {}
+    },
+    [],
+  )
 
   const toggle = (id) => {
-    const el = refs.current[id]
+    const el = audioRefs.current[id]
     if (!el) return
     if (!el.paused) {
       el.pause()
       return
     }
-    Object.entries(refs.current).forEach(([key, other]) => {
+    Object.entries(audioRefs.current).forEach(([key, other]) => {
       if (key !== id && other && !other.paused) other.pause()
     })
+    el.volume = volumeOf(id)
+    ensureGraph(id)
     el.play().catch(() => setPlaying(null))
+  }
+
+  const changeVolume = (id, v) => {
+    setVolumes((p) => ({ ...p, [id]: v }))
+    const el = audioRefs.current[id]
+    if (el) el.volume = v
+  }
+
+  const handlePlay = (id) => {
+    setPlaying(id)
+    tick(id)
+  }
+
+  const handleStop = (id) => {
+    stopMeter(id)
+    setPlaying((p) => (p === id ? null : p))
   }
 
   return (
@@ -949,34 +1038,76 @@ function RadioPlayer() {
           const isPlaying = playing === r.id
           return (
             <div key={r.id} className={`radio-card radio-${r.id}`}>
-              <button
-                className={`radio-play${isPlaying ? ' playing' : ''}`}
-                onClick={() => toggle(r.id)}
-                aria-label={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
-                title={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
-              >
-                {isPlaying ? '⏸' : '▶'}
-              </button>
-              <div className="radio-head">
-                <span className="radio-name">
-                  {isPlaying ? <span className="live-dot" /> : null}
-                  {r.name}
-                </span>
-                <span className="radio-dial">{r.dial}</span>
+              <div className="radio-main">
+                <button
+                  className={`radio-play${isPlaying ? ' playing' : ''}`}
+                  onClick={() => toggle(r.id)}
+                  aria-label={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
+                  title={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
+                >
+                  {isPlaying ? '⏸' : '▶'}
+                </button>
+                <div className="radio-head">
+                  <span className="radio-name">
+                    {isPlaying ? <span className="live-dot" /> : null}
+                    {r.name}
+                  </span>
+                  <span className="radio-dial">{r.dial}</span>
+                </div>
+                <a className="radio-link" href={r.web} target="_blank" rel="noreferrer" title="Abrir web oficial">
+                  ↗
+                </a>
+                <audio
+                  ref={(el) => {
+                    audioRefs.current[r.id] = el
+                  }}
+                  preload="none"
+                  crossOrigin="anonymous"
+                  src={r.stream}
+                  onPlay={() => handlePlay(r.id)}
+                  onPause={() => handleStop(r.id)}
+                  onError={() => handleStop(r.id)}
+                />
               </div>
-              <a className="radio-link" href={r.web} target="_blank" rel="noreferrer" title="Abrir web oficial">
-                ↗
-              </a>
-              <audio
-                ref={(el) => {
-                  refs.current[r.id] = el
-                }}
-                preload="none"
-                src={r.stream}
-                onPlay={() => setPlaying(r.id)}
-                onPause={() => setPlaying((p) => (p === r.id ? null : p))}
-                onError={() => setPlaying((p) => (p === r.id ? null : p))}
-              />
+              {isPlaying ? (
+                <div className="radio-meters">
+                  <div
+                    className="level"
+                    ref={(el) => {
+                      meterRefs.current[r.id] = { ...meterRefs.current[r.id], track: el }
+                    }}
+                    title="Nivel"
+                  >
+                    <div
+                      className="level-fill"
+                      ref={(el) => {
+                        meterRefs.current[r.id] = { ...meterRefs.current[r.id], fill: el }
+                      }}
+                    />
+                    <div className="level-segs" />
+                    <div
+                      className="level-peak"
+                      ref={(el) => {
+                        meterRefs.current[r.id] = { ...meterRefs.current[r.id], peak: el }
+                      }}
+                    />
+                  </div>
+                  <label className="vol" title="Volumen">
+                    <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M11 5 6 9H2v6h4l5 4z" fill="currentColor" stroke="none" />
+                      <path d="M15.5 8.5a5 5 0 0 1 0 7" />
+                    </svg>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={Math.round(volumeOf(r.id) * 100)}
+                      onChange={(e) => changeVolume(r.id, Number(e.target.value) / 100)}
+                      aria-label={`Volumen ${r.name}`}
+                    />
+                  </label>
+                </div>
+              ) : null}
             </div>
           )
         })}
