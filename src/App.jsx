@@ -925,11 +925,19 @@ const RADIOS = [
 
 function RadioPlayer() {
   const refs = useRef({})
+  const [playing, setPlaying] = useState(null)
 
-  const handlePlay = (id) => {
-    Object.entries(refs.current).forEach(([key, el]) => {
-      if (key !== id && el && !el.paused) el.pause()
+  const toggle = (id) => {
+    const el = refs.current[id]
+    if (!el) return
+    if (!el.paused) {
+      el.pause()
+      return
+    }
+    Object.entries(refs.current).forEach(([key, other]) => {
+      if (key !== id && other && !other.paused) other.pause()
     })
+    el.play().catch(() => setPlaying(null))
   }
 
   return (
@@ -937,28 +945,41 @@ function RadioPlayer() {
       <h3>📻 Escucha en directo</h3>
       <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club)</p>
       <div className="radio-grid">
-        {RADIOS.map((r) => (
-          <div key={r.id} className={`radio-card radio-${r.id}`}>
-            <div className="radio-head">
-              <span className="radio-name">{r.name}</span>
-              <span className="radio-dial">{r.dial}</span>
+        {RADIOS.map((r) => {
+          const isPlaying = playing === r.id
+          return (
+            <div key={r.id} className={`radio-card radio-${r.id}`}>
+              <button
+                className={`radio-play${isPlaying ? ' playing' : ''}`}
+                onClick={() => toggle(r.id)}
+                aria-label={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
+                title={isPlaying ? `Pausar ${r.name}` : `Escuchar ${r.name}`}
+              >
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+              <div className="radio-head">
+                <span className="radio-name">
+                  {isPlaying ? <span className="live-dot" /> : null}
+                  {r.name}
+                </span>
+                <span className="radio-dial">{r.dial}</span>
+              </div>
+              <a className="radio-link" href={r.web} target="_blank" rel="noreferrer" title="Abrir web oficial">
+                ↗
+              </a>
+              <audio
+                ref={(el) => {
+                  refs.current[r.id] = el
+                }}
+                preload="none"
+                src={r.stream}
+                onPlay={() => setPlaying(r.id)}
+                onPause={() => setPlaying((p) => (p === r.id ? null : p))}
+                onError={() => setPlaying((p) => (p === r.id ? null : p))}
+              />
             </div>
-            <audio
-              ref={(el) => {
-                refs.current[r.id] = el
-              }}
-              controls
-              preload="none"
-              src={r.stream}
-              onPlay={() => handlePlay(r.id)}
-            >
-              Tu navegador no soporta el reproductor de audio.
-            </audio>
-            <a className="radio-link" href={r.web} target="_blank" rel="noreferrer">
-              Escuchar en la web oficial ↗
-            </a>
-          </div>
-        ))}
+          )
+        })}
       </div>
     </section>
   )
