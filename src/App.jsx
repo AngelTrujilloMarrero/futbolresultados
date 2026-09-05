@@ -1021,13 +1021,20 @@ function RadioPlayer() {
 
   const handlePlay = (id) => {
     setPlaying(id)
-    tick(id)
   }
 
   const handleStop = (id) => {
     stopMeter(id)
     setPlaying((p) => (p === id ? null : p))
   }
+
+  // El bucle del vúmetro debe arrancar cuando la barra ya está montada
+  useEffect(() => {
+    if (!playing) return
+    ensureGraph(playing)
+    tick(playing)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [playing])
 
   return (
     <section className="radio">
