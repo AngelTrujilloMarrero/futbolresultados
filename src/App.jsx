@@ -906,6 +906,64 @@ function CostaAdejeLineup({ match }) {
   )
 }
 
+const RADIOS = [
+  {
+    id: 'cope',
+    name: 'COPE Tenerife',
+    dial: '97.1 FM · 882 OM',
+    stream: 'https://tenerife-copesedes-rrcast.flumotion.com/copesedes/tenerife.mp3',
+    web: 'https://www.cope.es/directos/tenerife',
+  },
+  {
+    id: 'ser',
+    name: 'SER Tenerife · Radio Club',
+    dial: '101.1 FM · 1179 OM',
+    stream: 'https://playerservices.streamtheworld.com/api/livestream-redirect/SER_MAS_TENERIFE.mp3',
+    web: 'https://cadenaser.com/radio-club-tenerife/',
+  },
+]
+
+function RadioPlayer() {
+  const refs = useRef({})
+
+  const handlePlay = (id) => {
+    Object.entries(refs.current).forEach(([key, el]) => {
+      if (key !== id && el && !el.paused) el.pause()
+    })
+  }
+
+  return (
+    <section className="radio">
+      <h3>📻 Escucha en directo</h3>
+      <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club)</p>
+      <div className="radio-grid">
+        {RADIOS.map((r) => (
+          <div key={r.id} className={`radio-card radio-${r.id}`}>
+            <div className="radio-head">
+              <span className="radio-name">{r.name}</span>
+              <span className="radio-dial">{r.dial}</span>
+            </div>
+            <audio
+              ref={(el) => {
+                refs.current[r.id] = el
+              }}
+              controls
+              preload="none"
+              src={r.stream}
+              onPlay={() => handlePlay(r.id)}
+            >
+              Tu navegador no soporta el reproductor de audio.
+            </audio>
+            <a className="radio-link" href={r.web} target="_blank" rel="noreferrer">
+              Escuchar en la web oficial ↗
+            </a>
+          </div>
+        ))}
+      </div>
+    </section>
+  )
+}
+
 function CostaAdejeCard({ m }) {
   const isFinal = m.status === 'post'
   const isLive = m.status === 'in'
@@ -1134,6 +1192,8 @@ export default function App() {
           </div>
         </section>
       ) : null}
+
+      <RadioPlayer />
 
       <div className="cal-toggle">
         <button

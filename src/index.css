@@ -1185,3 +1185,93 @@ body {
 .link-btn:hover {
   color: #5b21b6;
 }
+
+/* Radio en directo: COPE Tenerife + SER Tenerife */
+.radio {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  box-shadow: var(--shadow);
+}
+
+.radio h3 {
+  margin: 0 0 2px;
+  font-size: 16px;
+  color: var(--text-h);
+}
+
+.radio-sub {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text);
+}
+
+.radio-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.radio-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.radio-ser {
+  border-left-color: #e11d48;
+}
+
+.radio-cope {
+  border-left-color: #1d4ed8;
+}
+
+.radio-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.radio-name {
+  font-weight: 800;
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.radio-dial {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.radio-card audio {
+  width: 100%;
+  height: 36px;
+}
+
+.radio-link {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.radio-link:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 520px) {
+  .radio-grid {
+    grid-template-columns: 1fr;
+  }
+}
