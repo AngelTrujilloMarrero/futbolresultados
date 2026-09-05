@@ -1444,13 +1444,14 @@ body {
   }
 
   .tenerife-teams {
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    flex: 1 1 100%;
+    order: 5;
+    white-space: normal;
   }
 
   .tenerife-date {
     font-size: 10px;
+    margin-left: auto;
   }
 
   .tvc-chip {
