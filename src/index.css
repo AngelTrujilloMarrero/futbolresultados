@@ -1348,3 +1348,75 @@ body {
     font-size: 10px;
   }
 }
+
+/* Seguimiento especial minimalista en móviles */
+@media (max-width: 520px) {
+  .tenerife {
+    padding: 10px 12px;
+    margin-bottom: 12px;
+  }
+
+  .tenerife h3 {
+    font-size: 14px;
+  }
+
+  .tenerife-sub {
+    display: none;
+  }
+
+  .tenerife-list {
+    gap: 4px;
+  }
+
+  .tenerife-item {
+    gap: 4px 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .tenerife-league {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+
+  .tenerife-teams {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .tenerife-date {
+    font-size: 10px;
+  }
+
+  .tvc-chip {
+    font-size: 9px;
+    padding: 1px 6px;
+  }
+
+  .xi-toggle {
+    font-size: 10px;
+    padding: 3px 8px;
+  }
+
+  .xi-hint {
+    display: none;
+  }
+
+  .xi-panel {
+    padding: 8px 10px;
+  }
+
+  .xi-context {
+    display: none;
+  }
+
+  .xi-board-labels {
+    font-size: 10px;
+  }
+
+  .xi-list li {
+    font-size: 12px;
+    padding: 3px 6px;
+  }
+}
