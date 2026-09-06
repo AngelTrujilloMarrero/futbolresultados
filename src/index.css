@@ -1474,6 +1474,8 @@ body {
   }
 
   .level {
+    flex: none;
+    width: 100%;
     height: 10px;
   }
 
