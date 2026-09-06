@@ -467,25 +467,28 @@ export async function fetchCostaAdeje(tz) {
 
   const hits = []
   const seen = new Set()
-  const push = (m, league) => {
+  const push = (m, league, src) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
     if (!name.includes('tenerife') || m.status === 'post') return
     const key = `${league}-${m.id}`
     if (seen.has(key)) return
     seen.add(key)
-    hits.push({ ...m, league, team: 'costa-adeje' })
+    hits.push({ ...m, league, team: 'costa-adeje', src })
   }
 
-  ligaFEvents.forEach((m) => push(m, 'Liga F'))
+  ligaFEvents.forEach((m) => push(m, 'Liga F', 'espn'))
   if (ligaFFotmob) {
     ligaFFotmob.matches
       .map((m) => parseFotmobMatch(m, tz))
-      .forEach((m) => push(m, 'Liga F'))
+      .forEach((m) => push(m, 'Liga F', 'fotmob'))
   }
-  copaReina.forEach((m) => push(m, 'Copa de la Reina'))
+  copaReina.forEach((m) => push(m, 'Copa de la Reina', 'espn'))
 
-  const ordenados = hits.sort((a, b) => a.date.localeCompare(b.date))
-  // deduplicar por fecha+rival aproximado (ESPN + FotMob pueden duplicar)
+  const ordenados = hits.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+  // deduplicar por fecha+rival aproximado (ESPN + FotMob pueden duplicar).
+  // Se prefiere la versión ESPN: su ID permite cargar el XI en producción
+  // (ESPN tiene CORS abierto; FotMob solo funciona en dev vía proxy /fotmob).
+  // Con un ID de FotMob, fetchEspnLineup devuelve 404 y el XI no se muestra.
   const dedup = []
   for (const m of ordenados) {
     const day = m.date.slice(0, 10)
@@ -493,7 +496,7 @@ export async function fetchCostaAdeje(tz) {
     const rivalLow = rival.toLowerCase()
     const toks = normTokens(rival)
     const rawToks = rivalLow.normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[^a-z0-9]+/).filter(Boolean)
-    const isDup = dedup.some((d) => {
+    const dupIdx = dedup.findIndex((d) => {
       if (d.date.slice(0, 10) !== day) return false
       if (d.league !== m.league) return false
       const dr = d.home.name.toLowerCase().includes('tenerife') ? d.away.name : d.home.name
@@ -506,8 +509,12 @@ export async function fetchCostaAdeje(tz) {
       if (rawToks.some((t) => rawDt.includes(t) && t.length >= 3)) return true
       return false
     })
-    if (isDup) continue
-    dedup.push(m)
+    if (dupIdx === -1) {
+      dedup.push(m)
+    } else if (m.src === 'espn' && dedup[dupIdx].src !== 'espn') {
+      // reemplazar el duplicado de FotMob por el de ESPN (mismo partido, ID válido para el XI)
+      dedup[dupIdx] = m
+    }
   }
   // Seguimiento especial muestra solo el próximo partido de Liga F (como CD Tenerife: 1 por equipo)
   const ligaFHits = dedup.filter((m) => m.league === 'Liga F').slice(0, 1)
