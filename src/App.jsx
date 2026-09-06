@@ -1019,6 +1019,34 @@ function RadioPlayer() {
     [],
   )
 
+  // Precarga HLS al montar: adjunta la fuente MSE sin descargar segmentos
+  // (autoStartLoad:false). Así el play() del click es síncrono dentro del
+  // gesto del usuario, que los navegadores móviles exigen (si no, bloquean
+  // el audio y el nivelador no llega a aparecer).
+  useEffect(() => {
+    const station = RADIOS.find((s) => s.hls)
+    if (!station) return
+    let cancelled = false
+    loadHls()
+      .then((Hls) => {
+        if (cancelled || !Hls?.isSupported()) return
+        const el = audioRefs.current[station.id]
+        if (!el || hlsRefs.current[station.id]) return
+        const hls = new Hls({ autoStartLoad: false })
+        hlsRefs.current[station.id] = hls
+        hls.on(Hls.Events.ERROR, (_, data) => {
+          if (data?.fatal) stopStream(station.id)
+        })
+        hls.loadSource(station.stream)
+        hls.attachMedia(el)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const handlePlay = (id) => {
     setPlaying(id)
   }
@@ -1029,13 +1057,20 @@ function RadioPlayer() {
   }
 
   // Corte total del directo: pausa + descarga el stream para no
-  // mantener la conexión abierta ni acumular retraso respecto al vivo
+  // mantener la conexión abierta ni acumular retraso respecto al vivo.
+  // HLS mantiene la fuente MSE adjunta (solo stopLoad) para que el
+  // siguiente play siga siendo síncrono en el gesto en móviles.
   const stopStream = (id) => {
     playToken.current[id] = (playToken.current[id] || 0) + 1
     const hls = hlsRefs.current[id]
     if (hls) {
-      hls.destroy()
-      delete hlsRefs.current[id]
+      try {
+        hls.stopLoad()
+      } catch {}
+      const el = audioRefs.current[id]
+      if (el && !el.paused) el.pause()
+      handleStop(id)
+      return
     }
     const el = audioRefs.current[id]
     if (!el) return
@@ -1087,16 +1122,32 @@ function RadioPlayer() {
     })
     const station = RADIOS.find((s) => s.id === id)
     if (station?.hls) {
-      const prevHls = hlsRefs.current[id]
-      if (prevHls) {
-        prevHls.destroy()
-        delete hlsRefs.current[id]
+      playToken.current[id] = (playToken.current[id] || 0) + 1
+      const hls = hlsRefs.current[id]
+      if (hls) {
+        // fuente ya adjunta: reanudar carga y play síncrono en el gesto (válido en móviles)
+        try {
+          hls.startLoad()
+        } catch {}
+        el.volume = volumeOf(id)
+        ensureGraph(id)
+        el.play().catch(() => setPlaying(null))
+        return
       }
+      if (el.canPlayType('application/vnd.apple.mpegurl')) {
+        // Safari nativo: sin hls.js, play directo en el gesto
+        if (el.getAttribute('src') !== station.stream) el.src = station.stream
+        el.volume = volumeOf(id)
+        ensureGraph(id)
+        el.play().catch(() => setPlaying(null))
+        return
+      }
+      // hls.js aún cargando: vía lenta (puede no prosperar el gesto en móvil)
       el.removeAttribute('src')
       el.load()
       el.volume = volumeOf(id)
       ensureGraph(id)
-      const tok = (playToken.current[id] = (playToken.current[id] || 0) + 1)
+      const tok = playToken.current[id]
       attachHls(id, station, el, tok)
       return
     }
@@ -1156,7 +1207,7 @@ function RadioPlayer() {
                   }}
                   preload="none"
                   crossOrigin="anonymous"
-                  src={r.stream}
+                  src={r.hls ? undefined : r.stream}
                   onPlay={() => handlePlay(r.id)}
                   onPause={() => handleStop(r.id)}
                   onError={() => handleStop(r.id)}
