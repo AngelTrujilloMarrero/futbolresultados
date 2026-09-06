@@ -1,4 +1,13 @@
 import { useEffect, useRef, useState } from 'react'
+
+// hls.js se carga bajo demanda (solo Radio Canaria es HLS) para no engordar el bundle inicial
+let hlsCtorPromise = null
+const loadHls = () => {
+  if (!hlsCtorPromise) {
+    hlsCtorPromise = import('hls.js').then((m) => m.default)
+  }
+  return hlsCtorPromise
+}
 import {
   fetchScoreboard,
   fetchRfefBoard,
@@ -921,12 +930,22 @@ const RADIOS = [
     stream: 'https://playerservices.streamtheworld.com/api/livestream-redirect/SER_MAS_TENERIFE.mp3',
     web: 'https://cadenaser.com/radio-club-tenerife/',
   },
+  {
+    id: 'rtvc',
+    name: 'Radio Canaria · Todo Goles',
+    dial: '104.2 FM · Liga F oficial',
+    stream: 'https://radio1-rtvc.flumotion.cloud/playlist.m3u8',
+    web: 'https://rtvc.es/la-radio-canaria-en-directo/',
+    hls: true,
+  },
 ]
 
 function RadioPlayer() {
   const audioRefs = useRef({})
   const meterRefs = useRef({})
   const graphRefs = useRef({})
+  const hlsRefs = useRef({})
+  const playToken = useRef({})
   const ctxRef = useRef(null)
   const [playing, setPlaying] = useState(null)
   const [volumes, setVolumes] = useState({})
@@ -991,6 +1010,8 @@ function RadioPlayer() {
   useEffect(
     () => () => {
       Object.values(graphRefs.current).forEach((g) => g?.raf && cancelAnimationFrame(g.raf))
+      Object.values(hlsRefs.current).forEach((h) => h?.destroy?.())
+      hlsRefs.current = {}
       ctxRef.current?.close().catch(() => {})
       ctxRef.current = null
       graphRefs.current = {}
@@ -1010,12 +1031,48 @@ function RadioPlayer() {
   // Corte total del directo: pausa + descarga el stream para no
   // mantener la conexión abierta ni acumular retraso respecto al vivo
   const stopStream = (id) => {
+    playToken.current[id] = (playToken.current[id] || 0) + 1
+    const hls = hlsRefs.current[id]
+    if (hls) {
+      hls.destroy()
+      delete hlsRefs.current[id]
+    }
     const el = audioRefs.current[id]
     if (!el) return
     if (!el.paused) el.pause()
     el.removeAttribute('src')
     el.load()
     handleStop(id)
+  }
+
+  // Emisoras HLS (Radio Canaria): hls.js en Chrome/Firefox, nativo en Safari
+  const attachHls = async (id, station, el, tok) => {
+    const Hls = await loadHls().catch(() => null)
+    // la emisora pudo detenerse mientras se cargaba hls.js
+    if (playToken.current[id] !== tok) return
+    if (Hls?.isSupported()) {
+      const hls = new Hls()
+      hlsRefs.current[id] = hls
+      hls.on(Hls.Events.ERROR, (_, data) => {
+        if (data?.fatal) {
+          stopStream(id)
+        }
+      })
+      // HLS necesita el manifiesto antes del play (el <audio> aún no tiene fuente MSE)
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (playToken.current[id] !== tok) return
+        el.play().catch(() => setPlaying(null))
+      })
+      hls.loadSource(station.stream)
+      hls.attachMedia(el)
+      return
+    }
+    if (el.canPlayType('application/vnd.apple.mpegurl')) {
+      if (el.getAttribute('src') !== station.stream) el.src = station.stream
+      el.play().catch(() => setPlaying(null))
+      return
+    }
+    window.open(station.web, '_blank', 'noopener')
   }
 
   const toggle = (id) => {
@@ -1029,7 +1086,23 @@ function RadioPlayer() {
       if (key !== id) stopStream(key)
     })
     const station = RADIOS.find((s) => s.id === id)
-    if (station && el.getAttribute('src') !== station.stream) el.src = station.stream
+    if (station?.hls) {
+      const prevHls = hlsRefs.current[id]
+      if (prevHls) {
+        prevHls.destroy()
+        delete hlsRefs.current[id]
+      }
+      el.removeAttribute('src')
+      el.load()
+      el.volume = volumeOf(id)
+      ensureGraph(id)
+      const tok = (playToken.current[id] = (playToken.current[id] || 0) + 1)
+      attachHls(id, station, el, tok)
+      return
+    }
+    if (station && el.getAttribute('src') !== station.stream) {
+      el.src = station.stream
+    }
     el.volume = volumeOf(id)
     ensureGraph(id)
     el.play().catch(() => setPlaying(null))
@@ -1052,7 +1125,7 @@ function RadioPlayer() {
   return (
     <section className="radio">
       <h3>📻 Escucha en directo</h3>
-      <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club)</p>
+      <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club) · Radio Canaria (Liga F)</p>
       <div className="radio-grid">
         {RADIOS.map((r) => {
           const isPlaying = playing === r.id
