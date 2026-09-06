@@ -1380,6 +1380,33 @@ body {
   margin: 0;
 }
 
+/* Fallback: si el analizador no entrega datos pero el audio suena
+   (WebAudio capado en algunos móviles), barrido verde animado */
+@keyframes level-sweep {
+  0% {
+    left: -35%;
+    width: 35%;
+  }
+
+  50% {
+    left: 100%;
+    width: 35%;
+  }
+
+  100% {
+    left: -35%;
+    width: 35%;
+  }
+}
+
+.level-fallback .level-fill {
+  animation: level-sweep 1.4s ease-in-out infinite;
+}
+
+.level-fallback .level-peak {
+  display: none;
+}
+
 @media (max-width: 520px) {
   .radio {
     padding: 10px 12px;

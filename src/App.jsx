@@ -776,20 +776,8 @@ function CostaAdejeLineup({ match }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [match.date, match.status, lineup?.available])
 
-  const autoOpenedRef = useRef(false)
-  useEffect(() => {
-    if (!lineup?.available) {
-      autoOpenedRef.current = false
-      return
-    }
-    if (autoOpenedRef.current || open) return
-    const diffMin = (new Date(match.date).getTime() - Date.now()) / 60000
-    if ((diffMin < 60 && diffMin > -30) || match.status === 'in') {
-      setOpen(true)
-      autoOpenedRef.current = true
-    }
-  }, [lineup?.available, match.date, match.status, open])
-
+  // Sin auto-apertura en Liga F: el XI se abre solo manualmente,
+  // aunque ya esté disponible (el botón avisa con "¡disponible!")
   useEffect(() => {
     if (!open) return
     if (lineup?.available) return
@@ -975,12 +963,21 @@ function RadioPlayer() {
       analyser.fftSize = 512
       src.connect(analyser)
       analyser.connect(ctx.destination)
-      const g = { analyser, bytes: new Uint8Array(analyser.fftSize), display: 0, peak: 0, raf: 0 }
+      const g = { analyser, bytes: new Uint8Array(analyser.fftSize), display: 0, peak: 0, raf: 0, silent: 0 }
       graphRefs.current[id] = g
       return g
     } catch {
       return null
     }
+  }
+
+  // Fallback para móviles: si el audio suena pero el analizador devuelve
+  // silencio (WebAudio capado en algunos navegadores móviles), se activa un
+  // barrido animado por CSS para que la barra verde sí se vea en movimiento
+  const setFallback = (id, on) => {
+    const m = meterRefs.current[id]
+    const card = m?.track?.closest?.('.radio-card')
+    if (card) card.classList.toggle('level-fallback', on)
   }
 
   // Bucle del vúmetro: RMS del dominio temporal -> barra verde + pico
@@ -994,9 +991,19 @@ function RadioPlayer() {
     }
     g.analyser.getByteTimeDomainData(g.bytes)
     let sum = 0
+    let silent = true
     for (let i = 0; i < g.bytes.length; i++) {
+      if (g.bytes[i] !== 128) silent = false
       const v = (g.bytes[i] - 128) / 128
       sum += v * v
+    }
+    if (silent) {
+      g.silent = (g.silent || 0) + 1
+      // ~1.5s de silencio con audio sonando => el analizador no da datos
+      if (g.silent > 90) setFallback(id, true)
+    } else {
+      g.silent = 0
+      setFallback(id, false)
     }
     const level = Math.min(1, Math.sqrt(sum / g.bytes.length) * 3)
     g.display = Math.max(level, g.display - 0.03)
@@ -1014,6 +1021,8 @@ function RadioPlayer() {
   const startMeter = (id) => {
     const g = ensureGraph(id)
     if (!g || g.raf) return
+    g.silent = 0
+    setFallback(id, false)
     tick(id)
   }
 
@@ -1025,6 +1034,7 @@ function RadioPlayer() {
       g.display = 0
       g.peak = 0
     }
+    setFallback(id, false)
   }
 
   useEffect(
