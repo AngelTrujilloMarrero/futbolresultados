@@ -948,13 +948,21 @@ function RadioPlayer() {
   const playToken = useRef({})
   const ctxRef = useRef(null)
   const [playing, setPlaying] = useState(null)
+  const [hlsReady, setHlsReady] = useState(false)
   const [volumes, setVolumes] = useState({})
 
   const volumeOf = (id) => volumes[id] ?? 1
 
   // Crea el grafo Web Audio (fuente -> analizador -> salida) una sola vez por emisora
   const ensureGraph = (id) => {
-    if (graphRefs.current[id]) return graphRefs.current[id]
+    if (graphRefs.current[id]) {
+      // En móviles el contexto suele estar suspendido: reanudar aquí (gesto)
+      // es lo que evita que el analizador devuelva ceros y la barra no se mueva
+      try {
+        ctxRef.current?.resume?.().catch(() => {})
+      } catch {}
+      return graphRefs.current[id]
+    }
     const el = audioRefs.current[id]
     const Ctx = window.AudioContext || window.webkitAudioContext
     if (!el || !Ctx) return null
@@ -980,7 +988,10 @@ function RadioPlayer() {
     const g = graphRefs.current[id]
     const m = meterRefs.current[id]
     const el = audioRefs.current[id]
-    if (!g || !m || !el || el.paused) return
+    if (!g || !m || !el || el.paused) {
+      if (g) g.raf = 0
+      return
+    }
     g.analyser.getByteTimeDomainData(g.bytes)
     let sum = 0
     for (let i = 0; i < g.bytes.length; i++) {
@@ -998,10 +1009,19 @@ function RadioPlayer() {
     g.raf = requestAnimationFrame(() => tick(id))
   }
 
+  // Arranque único del vúmetro (evita dobles bucles y reintenta si las refs
+  // aún no estaban listas, algo habitual en móviles)
+  const startMeter = (id) => {
+    const g = ensureGraph(id)
+    if (!g || g.raf) return
+    tick(id)
+  }
+
   const stopMeter = (id) => {
     const g = graphRefs.current[id]
     if (g?.raf) cancelAnimationFrame(g.raf)
     if (g) {
+      g.raf = 0
       g.display = 0
       g.peak = 0
     }
@@ -1029,9 +1049,17 @@ function RadioPlayer() {
     let cancelled = false
     loadHls()
       .then((Hls) => {
-        if (cancelled || !Hls?.isSupported()) return
+        if (cancelled) return
+        // sin hls.js (nativo Safari o fallo de carga): la vía del click lo resuelve
+        if (!Hls?.isSupported()) {
+          setHlsReady(true)
+          return
+        }
         const el = audioRefs.current[station.id]
-        if (!el || hlsRefs.current[station.id]) return
+        if (!el || hlsRefs.current[station.id]) {
+          setHlsReady(true)
+          return
+        }
         const hls = new Hls({ autoStartLoad: false })
         hlsRefs.current[station.id] = hls
         hls.on(Hls.Events.ERROR, (_, data) => {
@@ -1039,8 +1067,11 @@ function RadioPlayer() {
         })
         hls.loadSource(station.stream)
         hls.attachMedia(el)
+        setHlsReady(true)
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) setHlsReady(true)
+      })
     return () => {
       cancelled = true
     }
@@ -1049,6 +1080,9 @@ function RadioPlayer() {
 
   const handlePlay = (id) => {
     setPlaying(id)
+    // Arranque del vúmetro en el propio evento de reproducción: aquí las
+    // refs de la barra ya están montadas con seguridad
+    requestAnimationFrame(() => startMeter(id))
   }
 
   const handleStop = (id) => {
@@ -1168,8 +1202,7 @@ function RadioPlayer() {
   // El bucle del vúmetro debe arrancar cuando la barra ya está montada
   useEffect(() => {
     if (!playing) return
-    ensureGraph(playing)
-    tick(playing)
+    startMeter(playing)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playing])
 
@@ -1189,7 +1222,7 @@ function RadioPlayer() {
                   aria-label={isPlaying ? `Detener ${r.name}` : `Escuchar ${r.name}`}
                   title={isPlaying ? `Detener ${r.name}` : `Escuchar ${r.name}`}
                 >
-                  {isPlaying ? '■' : '▶'}
+                  {isPlaying ? '■' : !hlsReady && r.hls ? '…' : '▶'}
                 </button>
                 <div className="radio-head">
                   <span className="radio-name">

@@ -1446,6 +1446,10 @@ body {
     align-items: stretch;
   }
 
+  .level {
+    height: 10px;
+  }
+
   .vol {
     justify-content: center;
   }
