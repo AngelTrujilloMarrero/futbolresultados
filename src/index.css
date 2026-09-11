@@ -1647,6 +1647,15 @@ svg {
     align-items: start;
   }
 
+  .matches:has(> .match-item:only-child) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .matches:has(> .match-item:only-child) > .match-item {
+    width: min(100%, calc(50% - 7px));
+    justify-self: center;
+  }
+
   .tenerife-list {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
