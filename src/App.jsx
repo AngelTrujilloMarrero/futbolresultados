@@ -908,8 +908,15 @@ const RADIOS = [
     id: 'cope',
     name: 'COPE Tenerife',
     dial: '97.1 FM · 882 OM',
-    stream: 'https://tenerife-copesedes-rrcast.flumotion.com/copesedes/tenerife.mp3',
+    stream: 'https://wecast03-h-cloud.flumotion.com/copesedes/tenerife.mp3',
     web: 'https://www.cope.es/directos/tenerife',
+  },
+  {
+    id: 'cope-mas',
+    name: 'COPE Más Tenerife',
+    dial: '105.1 FM · 99.0 Sur',
+    stream: 'https://wecast16-h-cloud.flumotion.com/copesedes/tenerife-mas.mp3',
+    web: 'https://www.cope.es/directos/cope-mas-tenerife',
   },
   {
     id: 'ser',
@@ -1219,7 +1226,7 @@ function RadioPlayer() {
   return (
     <section className="radio">
       <h3>📻 Escucha en directo</h3>
-      <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club) · Radio Canaria (Liga F)</p>
+      <p className="radio-sub">Narración de los partidos · COPE Tenerife · COPE Más Tenerife · SER Tenerife (Radio Club) · Radio Canaria (Liga F)</p>
       <div className="radio-grid">
         {RADIOS.map((r) => {
           const isPlaying = playing === r.id
