@@ -912,13 +912,6 @@ const RADIOS = [
     web: 'https://www.cope.es/directos/tenerife',
   },
   {
-    id: 'cope-mas',
-    name: 'COPE Más Tenerife',
-    dial: '105.1 FM · 99.0 Sur',
-    stream: 'https://wecast16-h-cloud.flumotion.com/copesedes/tenerife-mas.mp3',
-    web: 'https://www.cope.es/directos/cope-mas-tenerife',
-  },
-  {
     id: 'ser',
     name: 'SER Tenerife · Radio Club',
     dial: '101.1 FM · 1179 OM',
@@ -1226,7 +1219,7 @@ function RadioPlayer() {
   return (
     <section className="radio">
       <h3>📻 Escucha en directo</h3>
-      <p className="radio-sub">Narración de los partidos · COPE Tenerife · COPE Más Tenerife · SER Tenerife (Radio Club) · Radio Canaria (Liga F)</p>
+      <p className="radio-sub">Narración de los partidos · COPE Tenerife · SER Tenerife (Radio Club) · Radio Canaria (Liga F)</p>
       <div className="radio-grid">
         {RADIOS.map((r) => {
           const isPlaying = playing === r.id

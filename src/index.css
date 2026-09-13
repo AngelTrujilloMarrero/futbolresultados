@@ -1215,7 +1215,7 @@ svg {
   color: #5b21b6;
 }
 
-/* Radio en directo: COPE Tenerife + COPE Más Tenerife + SER Tenerife + Radio Canaria */
+/* Radio en directo: COPE Tenerife + SER Tenerife + Radio Canaria */
 .radio {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1310,8 +1310,7 @@ svg {
   border-left-color: #e11d48;
 }
 
-.radio-cope,
-.radio-cope-mas {
+.radio-cope {
   border-left-color: #1d4ed8;
 }
 

@@ -86,7 +86,6 @@ Polling del XI: en ventana `<90' antes o en vivo y hasta 4h después`, reintento
 | Emisora | Dial | Stream | Web |
 |---|---|---|---|
 | COPE Tenerife | 97.1 FM · 882 OM | MP3 Flumotion `wecast03-h-cloud` | cope.es/directos/tenerife |
-| COPE Más Tenerife | 105.1 FM · 99.0 Sur | MP3 Flumotion `wecast16-h-cloud` | cope.es/directos/cope-mas-tenerife |
 | SER Tenerife · Radio Club | 101.1 FM · 1179 OM | MP3 StreamTheWorld | cadenaser.com/radio-club-tenerife |
 | Radio Canaria · Todo Goles | 104.2 FM · Liga F oficial | HLS `.m3u8` Flumotion | rtvc.es/la-radio-canaria-en-directo |
 
