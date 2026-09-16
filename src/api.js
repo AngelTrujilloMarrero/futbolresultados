@@ -377,7 +377,7 @@ export async function fetchDesignacionesTV() {
 
 // Todas las fuentes en paralelo para que el seguimiento especial cargue a la vez que el resto
 export async function fetchTenerife(tz) {
-  const [segundaEvents, rfef2, copa] = await Promise.all([
+  const [segundaEvents, segundaFotmob, rfef2, copa] = await Promise.all([
     // Segunda: ventana amplia (0-90 días) para que, una vez acabado un partido,
     // el siguiente aparezca aunque falte más de 5 días (antes solo miraba 0-4).
     (async () => {
@@ -394,16 +394,24 @@ export async function fetchTenerife(tz) {
         return []
       }
     })(),
+    // Respaldo FotMob para Segunda (fotmobId 140): si ESPN falla o aún no
+    // publica la siguiente jornada tras un partido finalizado, el primer
+    // equipo seguiría apareciendo arriba en vez de desaparecer.
+    fetchFotmobOverview(LEAGUES.segunda.fotmobId, dateKey(0)).catch(() => null),
     // solo temporada actual: los pasados ya no se muestran
     fetchFotmobOverview(LEAGUES.rfef2.fotmobId, dateKey(0)).catch(() => null),
     fetchTenerifeCopa(tz).catch(() => []),
   ])
 
   const hits = []
-  const push = (m, league) => {
+  const seen = new Set()
+  const push = (m, league, src) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
     // solo partidos aún no jugados (el seguimiento especial no muestra pasados)
     if (!name.includes('tenerife') || m.status === 'post') return
+    const key = `${league}-${m.id}-${src}`
+    if (seen.has(key)) return
+    seen.add(key)
     // el filial se comprueba antes que "palmas" para no confundir
     // "Las Palmas B vs Tenerife B" con un derbi del primer equipo
     const team = /\btenerife\s+b\b/.test(name)
@@ -411,14 +419,39 @@ export async function fetchTenerife(tz) {
       : name.includes('palmas')
         ? 'las-palmas'
         : 'tenerife'
-    hits.push({ ...m, league, team })
+    hits.push({ ...m, league, team, src })
   }
-  segundaEvents.forEach((m) => push(m, 'Segunda'))
+  segundaEvents.forEach((m) => push(m, 'Segunda', 'espn'))
+  if (segundaFotmob) {
+    segundaFotmob.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, 'Segunda', 'fotmob'))
+  }
   if (rfef2) {
-    rfef2.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, '2ª RFEF'))
+    rfef2.matches.map((m) => parseFotmobMatch(m, tz)).forEach((m) => push(m, '2ª RFEF', 'fotmob'))
   }
-  copa.forEach((m) => push(m, 'Copa del Rey'))
-  const ordenados = hits.sort((a, b) => a.date.localeCompare(b.date))
+  copa.forEach((m) => push(m, 'Copa del Rey', 'espn'))
+  // deduplicar ESPN + FotMob del mismo partido (IDs distintos):
+  // misma fecha + mismo rival => quedarse con la versión ESPN
+  // (su ID permite cargar el XI; el de FotMob solo funciona en dev).
+  const dedup = []
+  for (const m of hits.sort((a, b) => a.date.localeCompare(b.date))) {
+    if (m.src !== 'fotmob' || m.league !== 'Segunda') {
+      dedup.push(m)
+      continue
+    }
+    const day = m.date.slice(0, 10)
+    const rival = (m.home.name.toLowerCase().includes('tenerife') ? m.away.name : m.home.name).toLowerCase()
+    const toks = normTokens(rival)
+    const dup = dedup.find((d) => {
+      if (d.league !== 'Segunda' || d.date.slice(0, 10) !== day) return false
+      const dr = (d.home.name.toLowerCase().includes('tenerife') ? d.away.name : d.home.name).toLowerCase()
+      if (rival === dr || rival.includes(dr) || dr.includes(rival)) return true
+      const dt = normTokens(dr)
+      return toks.length > 0 && dt.length > 0 && toks.some((t) => dt.includes(t))
+    })
+    if (!dup) dedup.push(m)
+    // si hay duplicado se conserva el ESPN ya guardado y se descarta el FotMob
+  }
+  const ordenados = dedup.sort((a, b) => a.date.localeCompare(b.date))
   // el seguimiento especial muestra el siguiente partido de cada equipo (primer equipo y filial)
   return [
     ordenados.find((m) => m.team !== 'tenerife-b'),
