@@ -965,12 +965,15 @@ async function findFotmobEvent(fotmobId, expectedDate, homeName, awayName) {
   const day = expectedDate.slice(0, 10)
   const h = normTokens(homeName || '')
   const a = normTokens(awayName || '')
-  const hit = (tokens, name) => tokens.some((t) => name.includes(t))
+  const hit = (tokens, name) => {
+    const nt = normTokens(name)
+    return tokens.some((t) => nt.includes(t))
+  }
   for (const m of all) {
     const utc = m.status?.utcTime || ''
     if (day && utc.slice(0, 10) !== day) continue
-    const hn = (m.home?.name || '').toLowerCase()
-    const an = (m.away?.name || '').toLowerCase()
+    const hn = m.home?.name || ''
+    const an = m.away?.name || ''
     if ((hit(h, hn) && hit(a, an)) || (hit(h, an) && hit(a, hn))) return m
   }
   return null
@@ -1049,8 +1052,10 @@ export async function fetchLineup(leagueKey, eventId, expectedDate, homeName, aw
   if (cfg.fotmobId && cfg.source !== 'espn') {
     jobs.push(fetchFotmobLineup(cfg.fotmobId, eventId, expectedDate))
   } else if (cfg.fotmobId) {
-    // liga ESPN con id FotMob conocido: resolver evento por equipos+fecha
-    jobs.push(fetchFotmobLineup(cfg.fotmobId, null, expectedDate, homeName, awayName))
+    // liga ESPN con id FotMob conocido: el eventId recibido puede ser ya el
+    // de FotMob (el seguimiento lo usa como respaldo cuando ESPN no publica),
+    // así que se pasa para resolver el slug por id y, si no, por equipos+fecha
+    jobs.push(fetchFotmobLineup(cfg.fotmobId, eventId, expectedDate, homeName, awayName))
   }
   const settled = await Promise.allSettled(jobs)
   const results = settled.map((r) => (r.status === 'fulfilled' ? r.value : null)).filter(Boolean)
