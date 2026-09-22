@@ -98,9 +98,11 @@ Detalles técnicos:
 
 ## Insignias de TV
 
-Scraping de `futbolenlatv.es` (`src/api.js`):
+Doble fuente (`src/api.js`), unión de ambas (`Set` de fechas por equipo):
 
-- `fetchDesignacionesTV()`: para `tenerife` y `las-palmas`, busca filas con `listaCanales` + `startDate` y guarda los días cuyo segmento menciona `TV Canaria` → `{ tenerife: Set, las-palmas: Set }`. `isTvcMatch` cruza por fecha (`date.slice(0,10)`) y nombre (tenerife/palmas).
+- **LALIGA API** (principal): `GET https://apim.laliga.com/public-service/api/v1/matches?teamSlug=cd-tenerife|ud-las-palmas&seasonYear=&limit=60` con cabecera `Ocp-Apim-Subscription-Key` (clave web pública de laliga.com). CORS `*`, funciona en producción sin proxy. Filtra `channels[]` con slug `tv-canaria`/`television-canaria` o nombre `TV Canaria`/`Televisión Canaria` → `loadLaligaTvc`.
+- **futbolenlatv.es** (respaldo, cubre Copa): para `tenerife` y `las-palmas`, busca filas con `listaCanales` + `startDate` y guarda los días cuyo segmento menciona TV Canaria → `loadFutbolEnLaTvTvc`.
+- `fetchDesignacionesTV()` une ambos orígenes → `{ tenerife: Set, las-palmas: Set }`. `isTvcMatch` cruza por fecha (`date.slice(0,10)`) y nombre (tenerife/palmas).
 - `fetchPrimeraRfefTv()`: parsea `/competicion/primera-division-rfef`, filtra segmentos con `movistar|m+|federaci` y devuelve `{ date, h: tokens, a: tokens }`. `isMovistarRfef1` cruza por día + intersección de tokens (`normTokens`) en ambos sentidos.
 - UI: `TvcBadge` (logo `tv-canaria.svg` + `TV Canaria`, en móvil solo logo), `MovistarBadge` (`Movistar 1ª RFEF` / `M+` en móvil) y `tvc-chip` (`Con/Sin TV Canaria`) en el seguimiento.
 
@@ -108,7 +110,8 @@ Scraping de `futbolenlatv.es` (`src/api.js`):
 
 - **ESPN pública**: `site.api.espn.com/apis/site/v2/sports/soccer/<slug>/scoreboard?dates=&limit=`, `summary?event=` (eventos + XI) y `site.web.api.espn.com/.../standings`. Logos ESPN incluidos en la respuesta.
 - **FotMob (HTML `__NEXT_DATA__`)**: `/leagues/<id>/overview|fixtures?season=`, `/matches/<slug>`, con caché en memoria (`fotmobCache`), índice de slugs y temporada `YYYY/YYYY+1` (corte en agosto). Logos: `images.fotmob.com/.../teamlogo/<id>.png`. Requiere `User-Agent` de navegador; en producción puede fallar por CORS (ver limitaciones).
-- **futbolenlatv.es**: HTML scrapeado en cliente para TV (frágil ante cambios de markup).
+- **LALIGA API**: `apim.laliga.com/public-service/api/v1/matches` con clave de suscripción web (CORS `*`, cabecera `Ocp-Apim-Subscription-Key`) para canales designados (TV Canaria).
+- **futbolenlatv.es**: HTML scrapeado en cliente para TV (frágil ante cambios de markup); respaldo de LALIGA API y fuente de Copa.
 
 ## Fechas y zona horaria
 
@@ -157,5 +160,5 @@ npm run lint     # oxlint
 
 - **FotMob en producción**: fetch directo sujeto a CORS; funciona en `npm run dev` por el proxy. Por eso el seguimiento prefiere el duplicado ESPN (su ID permite XI en prod).
 - **HLS/móviles**: el `play()` debe ocurrir en el gesto; la precarga MSE y no descargar segmentos hasta el clic son intencionados. Sin `hls.js` ni soporte nativo, se abre la web oficial.
-- **Scraping futbolenlatv**: si cambian `listaCanales` / `itemprop="startDate|name"`, las insignias de TV dejan de detectarse (fallo silencioso → arrays/sets vacíos).
+- **Scraping futbolenlatv**: si cambian `listaCanales` / `itemprop="startDate|name"`, el respaldo de TV deja de detectarse (fallo silencioso → Set vacío); la insignia sigue funcionando vía LALIGA API mientras esta esté disponible.
 - **IDs no compartidos**: ESPN y FotMob usan IDs distintos; el cruce es por fecha + tokens de nombre (`normTokens`), con guardia de fecha para no mezclar jornadas.

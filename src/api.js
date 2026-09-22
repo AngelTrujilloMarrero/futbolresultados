@@ -304,9 +304,13 @@ export async function fetchTenerifeCopa(tz) {
 }
 
 const TVC_TEAMS = [
-  { slug: 'tenerife', match: 'tenerife' },
-  { slug: 'las-palmas', match: 'palmas' },
+  { slug: 'tenerife', laligaSlug: 'cd-tenerife', match: 'tenerife' },
+  { slug: 'las-palmas', laligaSlug: 'ud-las-palmas', match: 'palmas' },
 ]
+
+const LALIGA_API = 'https://apim.laliga.com/public-service'
+const LALIGA_SUBSCRIPTION_KEY = 'c13c3a8e2f6b46da9c5c425cf61fab3e'
+const TVC_CHANNEL_RE = /tv\s*canaria|televisi[oó]n\s*canaria/i
 
 function decodeEntities(s) {
   return String(s || '')
@@ -350,28 +354,64 @@ export async function fetchPrimeraRfefTv() {
   }
 }
 
-export async function fetchDesignacionesTV() {
-  const load = async (slug) => {
-    try {
-      const res = await fetch(`https://www.futbolenlatv.es/equipo/${slug}`)
-      if (!res.ok) return new Set()
-      const html = await res.text()
-      const days = new Set()
-      for (const row of html.split(/<tr[\s>]/)) {
-        const li = row.indexOf('listaCanales')
-        if (li === -1) continue
-        const startM = row.match(/itemprop="startDate"\s+content="([\d-]+)/)
-        if (!startM) continue
-        const end = row.indexOf('</ul>', li)
-        const seg = end > -1 ? row.slice(li, end) : row.slice(li)
-        if (/tv\s*canaria/i.test(seg)) days.add(startM[1])
-      }
-      return days
-    } catch {
-      return new Set()
+async function loadLaligaTvc(team) {
+  try {
+    const now = new Date()
+    const seasonYear = now.getMonth() + 1 >= 8 ? now.getFullYear() : now.getFullYear() - 1
+    const url = `${LALIGA_API}/api/v1/matches?teamSlug=${encodeURIComponent(team.laligaSlug)}&seasonYear=${seasonYear}&limit=60`
+    const res = await fetch(url, {
+      headers: { 'Ocp-Apim-Subscription-Key': LALIGA_SUBSCRIPTION_KEY },
+    })
+    if (!res.ok) return new Set()
+    const data = await res.json()
+    const days = new Set()
+    for (const m of data.matches || []) {
+      const hit = (m.channels || []).some((c) => {
+        const slug = String(c?.slug || '')
+        if (slug === 'tv-canaria' || slug === 'television-canaria') return true
+        return TVC_CHANNEL_RE.test(String(c?.name || ''))
+      })
+      if (hit && m.date) days.add(String(m.date).slice(0, 10))
     }
+    return days
+  } catch {
+    return new Set()
   }
-  const entries = await Promise.all(TVC_TEAMS.map((t) => load(t.slug)))
+}
+
+async function loadFutbolEnLaTvTvc(slug) {
+  try {
+    const res = await fetch(`https://www.futbolenlatv.es/equipo/${slug}`)
+    if (!res.ok) return new Set()
+    const html = await res.text()
+    const days = new Set()
+    for (const row of html.split(/<tr[\s>]/)) {
+      const li = row.indexOf('listaCanales')
+      if (li === -1) continue
+      const startM = row.match(/itemprop="startDate"\s+content="([\d-]+)/)
+      if (!startM) continue
+      const end = row.indexOf('</ul>', li)
+      const seg = end > -1 ? row.slice(li, end) : row.slice(li)
+      if (TVC_CHANNEL_RE.test(seg)) days.add(startM[1])
+    }
+    return days
+  } catch {
+    return new Set()
+  }
+}
+
+export async function fetchDesignacionesTV() {
+  const entries = await Promise.all(
+    TVC_TEAMS.map(async (t) => {
+      const [laliga, futbol] = await Promise.all([
+        loadLaligaTvc(t),
+        loadFutbolEnLaTvTvc(t.slug),
+      ])
+      const days = new Set(laliga)
+      for (const d of futbol) days.add(d)
+      return days
+    }),
+  )
   return Object.fromEntries(TVC_TEAMS.map((t, i) => [t.slug, entries[i]]))
 }
 
