@@ -31,7 +31,7 @@ importers:
         specifier: ^1.89.0
         version: 1.89.0
       vite:
-        specifier: ^8.3.5
+        specifier: ^8.3.4
         version: 8.3.5
 
 packages:
