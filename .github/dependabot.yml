@@ -13,8 +13,3 @@ updates:
     labels:
       - "dependencies"
       - "automated"
-    # Solo patch y minor (sin major)
-    ignore:
-      - dependency-name: "*"
-        update-types:
-          - "version-update:semver-major"
