@@ -2,7 +2,7 @@ name: Auto-update Node.js patch
 
 on:
   schedule:
-    # Cada lunes a las 06:00 Europe/Madrid (05:00 UTC en verano)
+    # Cada lunes a las 05:00 UTC (06:00/07:00 en Madrid según horario de verano)
     - cron: "0 5 * * 1"
   workflow_dispatch:
 
@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
