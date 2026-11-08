@@ -21,6 +21,7 @@
 - FotMob goes through the dev proxy (`/fotmob…`) in dev, direct URL in prod where CORS often fails — decided by `fotmobUrl()`/`isDev()` in `src/api.js`. In production prefer ESPN IDs for lineups: `fetchEspnLineup` works with open CORS, while FotMob event IDs 404 there.
 - ESPN and FotMob IDs never match. Cross-source dedup matches by date + `normTokens()` team tokens and **keeps the ESPN copy** (its ID loads the XI in prod). Keep the `date-mismatch` guards in `fetchEspnLineup`/`fetchFotmobLineup` — they prevent showing another matchday's XI.
 - FotMob lineups: accept only `lineupType` `confirmed`/`standard`; `lastStarting11` is the *previous* match's XI — never treat it as current.
+- Aplazados/cancelados: FotMob usa `cancelled: true` + `finished`/`started` en false (no es un `pre` normal) y ESPN `STATUS_POSTPONED`/`STATUS_CANCELED` con state `post`. `parseFotmobMatch`/`parseCompetition` los exponen como `postponed`/`cancelled`; el seguimiento especial los salta (y usa el siguiente programado) para no mostrar la fecha antigua.
 - Season cutoff is August (`fotmobSeason`); ESPN season calendars fetch 300-day windows from July 1 with dedup by event id.
 - `LALIGA_SUBSCRIPTION_KEY` in `src/api.js` is an intentional public web key (documented in README), not a secret to extract or rotate.
 

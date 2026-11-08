@@ -1291,8 +1291,9 @@ function RadioPlayer() {
 }
 
 function CostaAdejeCard({ m }) {
-  const isFinal = m.status === 'post'
+  const isFinal = m.status === 'post' && !m.postponed && !m.cancelled
   const isLive = m.status === 'in'
+  const statusLabel = m.postponed ? 'Aplazado' : m.cancelled ? 'Cancelado' : null
   return (
     <div className="tenerife-item-wrap">
       <div className="tenerife-item costa-item">
@@ -1300,16 +1301,19 @@ function CostaAdejeCard({ m }) {
         <span className="tenerife-teams">
           {m.home.name} {isFinal || isLive ? `${m.home.score} - ${m.away.score}` : 'vs'} {m.away.name}
         </span>
-        <span className="tenerife-date">{isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}</span>
+        <span className="tenerife-date" title={statusLabel ? m.dateLabel : undefined}>
+          {statusLabel || (isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel)}
+        </span>
       </div>
-      <CostaAdejeLineup match={m} />
+      {statusLabel ? null : <CostaAdejeLineup match={m} />}
     </div>
   )
 }
 
 function TenerifeCard({ m, tvc }) {
-  const isFinal = m.status === 'post'
+  const isFinal = m.status === 'post' && !m.postponed && !m.cancelled
   const isLive = m.status === 'in'
+  const statusLabel = m.postponed ? 'Aplazado' : m.cancelled ? 'Cancelado' : null
   const badgeable = m.league === 'Segunda' || m.league === 'Copa del Rey'
   const onTvc = tvc
   return (
@@ -1324,10 +1328,12 @@ function TenerifeCard({ m, tvc }) {
             {onTvc ? 'Con TV Canaria' : 'Sin TV Canaria'}
           </span>
         ) : null}
-        <span className="tenerife-date">{isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel}</span>
+        <span className="tenerife-date" title={statusLabel ? m.dateLabel : undefined}>
+          {statusLabel || (isFinal ? 'Final' : isLive ? `EN VIVO ${m.clock}` : m.dateLabel)}
+        </span>
       </div>
       {/* XI inicial solo para el CD Tenerife, no para el filial */}
-      {m.team !== 'tenerife-b' ? <TenerifeLineup match={m} /> : null}
+      {m.team !== 'tenerife-b' && !statusLabel ? <TenerifeLineup match={m} /> : null}
     </div>
   )
 }

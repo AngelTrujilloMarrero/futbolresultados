@@ -20,7 +20,7 @@ Web de seguimiento del fútbol español con foco en Canarias: resultados en dire
 
 ## Características
 
-- **Seguimiento especial** de CD Tenerife (Segunda + Copa del Rey), Tenerife B (2ª RFEF) y Costa Adeje Tenerife (Liga F + Copa de la Reina). Muestra solo el siguiente partido no jugado de cada equipo, ordenado por fecha, con chip de liga, marcador o hora, chip `Con/Sin TV Canaria` y botón de XI.
+- **Seguimiento especial** de CD Tenerife (Segunda + Copa del Rey), Tenerife B (2ª RFEF) y Costa Adeje Tenerife (Liga F + Copa de la Reina). Muestra solo el siguiente partido no jugado de cada equipo, ordenado por fecha, con chip de liga, marcador o hora, chip `Con/Sin TV Canaria` y botón de XI. Los aplazados/cancelados no ocupan ese hueco: se salta al siguiente programado y, si no hay, se muestra el aplazado con la etiqueta `Aplazado`.
 - **5 ligas navegables**: Primera, Segunda, 1ª RFEF, 2ª RFEF y Liga F, con pestañas Hoy / Próximos / Resultados / Clasificación más vista de Calendario de temporada.
 - **Detalle por partido** (en vivo y finalizados): goles, tarjetas y cambios por equipo + campo SVG con marcadores posicionados y XI inicial superpuesto cuando está publicado.
 - **XI inicial con doble fuente y verificación**: ESPN + FotMob con validación de fecha y comparación cruzada (`✓ verificado` si ≥9 nombres coinciden). Polling en ventana de partido y auto-apertura.

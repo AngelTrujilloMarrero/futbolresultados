@@ -41,16 +41,33 @@ export function toTimeLabel(dateStr, tz = TIMEZONES.canarias) {
   })
 }
 
+// ESPN y FotMob marcan los aplazamientos/cancelaciones de forma distinta:
+// ESPN usa state 'post' + STATUS_POSTPONED/STATUS_CANCELED, y FotMob
+// cancelled:true + reason. Sin detectarlo, un aplazado se colaba como 'pre'
+// y el seguimiento especial seguía mostrando la fecha antigua.
+function cancellationFlags(text, cancelledFlag = false) {
+  const t = String(text || '').toLowerCase()
+  if (/postpon|aplaz/.test(t)) return { postponed: true, cancelled: false }
+  if (cancelledFlag || /cancel|suspend|abandon/.test(t)) return { postponed: false, cancelled: true }
+  return { postponed: false, cancelled: false }
+}
+
 function parseCompetition(comp, tz) {
   const [home, away] = comp.competitors
-  const status = comp.status?.type?.state || 'pre'
+  const type = comp.status?.type || {}
+  const status = type.state || 'pre'
+  const { postponed, cancelled } = cancellationFlags(
+    `${type.name || ''} ${type.description || ''} ${type.detail || ''}`,
+  )
   return {
     id: comp.id,
     date: comp.date,
     dateLabel: toLocal(comp.date, tz),
     status,
-    detail: comp.status?.type?.detail || '',
-    clock: comp.status?.type?.shortDetail || '',
+    postponed,
+    cancelled,
+    detail: type.detail || '',
+    clock: type.shortDetail || '',
     venue: comp.venue?.fullName || '',
     home: {
       name: home?.team?.shortDisplayName || home?.team?.displayName || '?',
@@ -177,8 +194,13 @@ const FOTMOB_EVENT_TYPES = {
 
 function parseFotmobMatch(m, tz) {
   const status = m.status || {}
+  const reason = status.reason || {}
   const finished = Boolean(status.finished)
   const started = Boolean(status.started)
+  const { postponed, cancelled } = cancellationFlags(
+    `${reason.shortKey || ''} ${reason.longKey || ''} ${reason.short || ''} ${reason.long || ''}`,
+    Boolean(status.cancelled),
+  )
   const home = m.home || {}
   const away = m.away || {}
   return {
@@ -186,8 +208,14 @@ function parseFotmobMatch(m, tz) {
     date: status.utcTime,
     dateLabel: toLocal(status.utcTime, tz),
     status: finished ? 'post' : started ? 'in' : 'pre',
-    detail: status.reason?.long || (started ? 'En vivo' : ''),
-    clock: status.scoreStr || status.reason?.short || '',
+    postponed: postponed && !finished,
+    cancelled: cancelled && !finished,
+    detail: postponed
+      ? 'Aplazado'
+      : cancelled
+        ? 'Cancelado'
+        : reason.long || (started ? 'En vivo' : ''),
+    clock: status.scoreStr || reason.short || '',
     venue: '',
     group: m.group != null ? `Grupo ${m.group}` : '',
     round: m.round != null && !Number.isNaN(Number(m.round)) ? Number(m.round) : null,
@@ -445,10 +473,20 @@ export async function fetchTenerife(tz) {
 
   const hits = []
   const seen = new Set()
+  const now = Date.now()
+  // Un partido 'pre' con fecha muy pasada suele ser un aplazado que la fuente
+  // aún no ha actualizado (o un estado obsoleto): no debe ocupar el seguimiento.
+  const stalePre = (m) =>
+    m.status === 'pre' &&
+    !m.postponed &&
+    !m.cancelled &&
+    new Date(m.date).getTime() < now - 6 * 60 * 60 * 1000
   const push = (m, league, src) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
-    // solo partidos aún no jugados (el seguimiento especial no muestra pasados)
-    if (!name.includes('tenerife') || m.status === 'post') return
+    // solo partidos aún no jugados (el seguimiento especial no muestra pasados).
+    // Aplazados/cancelados se conservan como respaldo, pero no como "próximo".
+    if (!name.includes('tenerife') || (m.status === 'post' && !m.postponed && !m.cancelled)) return
+    if (stalePre(m)) return
     const key = `${league}-${m.id}-${src}`
     if (seen.has(key)) return
     seen.add(key)
@@ -492,11 +530,16 @@ export async function fetchTenerife(tz) {
     // si hay duplicado se conserva el ESPN ya guardado y se descarta el FotMob
   }
   const ordenados = dedup.sort((a, b) => a.date.localeCompare(b.date))
-  // el seguimiento especial muestra el siguiente partido de cada equipo (primer equipo y filial)
-  return [
-    ordenados.find((m) => m.team !== 'tenerife-b'),
-    ordenados.find((m) => m.team === 'tenerife-b'),
-  ]
+  // el seguimiento especial muestra el siguiente partido de cada equipo (primer
+  // equipo y filial). Un aplazado/cancelado no es "el siguiente": se salta al
+  // siguiente programado y solo se usa como respaldo si no queda ninguno.
+  const firstTeam =
+    ordenados.find((m) => m.team !== 'tenerife-b' && !m.postponed && !m.cancelled) ||
+    ordenados.find((m) => m.team !== 'tenerife-b')
+  const filial =
+    ordenados.find((m) => m.team === 'tenerife-b' && !m.postponed && !m.cancelled) ||
+    ordenados.find((m) => m.team === 'tenerife-b')
+  return [firstTeam, filial]
     .filter(Boolean)
     .sort((a, b) => a.date.localeCompare(b.date))
 }
@@ -540,9 +583,16 @@ export async function fetchCostaAdeje(tz) {
 
   const hits = []
   const seen = new Set()
+  const now = Date.now()
+  const stalePre = (m) =>
+    m.status === 'pre' &&
+    !m.postponed &&
+    !m.cancelled &&
+    new Date(m.date).getTime() < now - 6 * 60 * 60 * 1000
   const push = (m, league, src) => {
     const name = `${m.home.name} ${m.away.name}`.toLowerCase()
-    if (!name.includes('tenerife') || m.status === 'post') return
+    if (!name.includes('tenerife') || (m.status === 'post' && !m.postponed && !m.cancelled)) return
+    if (stalePre(m)) return
     const key = `${league}-${m.id}`
     if (seen.has(key)) return
     seen.add(key)
@@ -590,7 +640,10 @@ export async function fetchCostaAdeje(tz) {
     }
   }
   // Seguimiento especial muestra solo el próximo partido de Liga F (como CD Tenerife: 1 por equipo)
-  const ligaFHits = dedup.filter((m) => m.league === 'Liga F').slice(0, 1)
+  const ligaF = dedup.filter((m) => m.league === 'Liga F')
+  const ligaFHits = [
+    ligaF.find((m) => !m.postponed && !m.cancelled) || ligaF[0],
+  ].filter(Boolean)
   return ligaFHits
 }
 
