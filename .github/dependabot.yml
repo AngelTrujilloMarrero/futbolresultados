@@ -5,7 +5,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
-      time: "06:00"
+      # Una hora después del actualizador de Node.js (05:00 UTC) para no
+      # provocar dos despliegues de Vercel solapados.
+      time: "07:00"
       timezone: "Europe/Madrid"
     open-pull-requests-limit: 10
     reviewers:
