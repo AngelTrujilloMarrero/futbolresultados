@@ -13,3 +13,7 @@ updates:
     labels:
       - "dependencies"
       - "automated"
+    groups:
+      todas:
+        patterns:
+          - "*"
